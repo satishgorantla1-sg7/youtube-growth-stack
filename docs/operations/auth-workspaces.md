@@ -21,4 +21,4 @@ Sign-up stores only the pending workspace name/slug in Auth user metadata. When 
 - `supabase test db` runs the two-tenant onboarding/RLS policy test after a clean reset.
 - No provider cost, voice retention, or approval behavior changes.
 
-Migration `202608010004_secure_workspace_onboarding.sql` takes brief catalog locks while replacing the function, dropping one insert policy, and revoking direct insert. It does not rewrite or backfill data. Roll forward by correcting the function/policy in a later migration. Emergency rollback is a new migration restoring the old insert policy and grant; reverting application code alone does not revert database authorization.
+Migration `202608010007_secure_workspace_onboarding.sql` runs after the durable research migrations and takes brief catalog locks while replacing the workspace function, dropping one insert policy, and revoking direct insert. It does not rewrite or backfill data. Roll forward by correcting the function/policy in a later migration. Emergency rollback is a new migration restoring the old insert policy and grant; reverting application code alone does not revert database authorization.
