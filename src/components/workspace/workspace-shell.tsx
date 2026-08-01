@@ -78,12 +78,13 @@ export function WorkspaceShell({
   signOutAction,
   navigationCounts,
   usage = null,
-  readiness = { status: "unavailable", label: "Status unavailable" },
+  readiness,
   mode = "connected",
   children,
 }: WorkspaceShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const navigationId = useId();
+  const resolvedReadiness = readiness ?? (mode === "demo" ? { status: "ready" as const, label: "Demo mode ready" } : { status: "unavailable" as const, label: "Status unavailable" });
   const safeLimit = usage && usage.creditLimit > 0 ? usage.creditLimit : 0;
   const usagePercent = safeLimit ? Math.min(100, Math.max(0, (usage!.usedCredits / safeLimit) * 100)) : 0;
 
@@ -166,10 +167,10 @@ export function WorkspaceShell({
           </div>
           <div className="top-actions">
             {mode === "demo" ? <span className="demo-badge">Demo data</span> : null}
-            <span className={`status-pill status-${readiness.status}`} role="status"><i /> {readiness.label}</span>
+            <span className={`status-pill status-${resolvedReadiness.status}`} role="status"><i /> {resolvedReadiness.label}</span>
           </div>
         </header>
-        {children}
+        <div className="workspace-shell-body">{children}</div>
       </section>
     </main>
   );

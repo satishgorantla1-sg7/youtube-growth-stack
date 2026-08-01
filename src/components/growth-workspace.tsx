@@ -467,7 +467,7 @@ export function GrowthWorkspace({
         <div className="content">
           <section className="hero-copy">
             <div>
-              <p className="eyebrow"><Flame size={15} fill="currentColor" /> Monday momentum</p>
+              <p className="eyebrow"><Flame size={15} fill="currentColor" /> Ready when you are</p>
               <h1>What should we grow today?</h1>
               <p>Talk naturally. Your research agent will investigate, build, and bring every important decision back to you.</p>
             </div>

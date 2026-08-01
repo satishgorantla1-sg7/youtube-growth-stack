@@ -30,7 +30,7 @@ export type WorkspacePageContext = {
   displayName: string;
   role: string;
   mode: "demo" | "connected";
-  navigationCounts?: { ideas: number; packages: number; approvals: number };
+  navigationCounts?: { research: number; ideas: number; packages: number; approvals: number };
 };
 
 export interface DashboardDataSource {
@@ -44,5 +44,5 @@ export interface DashboardDataSource {
   projects(workspaceId: string): Promise<DataResult<ProjectRow[]>>;
   usage(workspaceId: string): Promise<DataResult<UsageRow[]>>;
   workspace(workspaceId: string): Promise<DataResult<WorkspaceRow>>;
-  navigationCounts(workspaceId: string): Promise<DataResult<{ ideas: number; packages: number; approvals: number }>>;
+  navigationCounts(workspaceId: string): Promise<DataResult<{ research: number; ideas: number; packages: number; approvals: number }>>;
 }

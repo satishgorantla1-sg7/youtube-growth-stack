@@ -8,7 +8,7 @@ import { SupabaseDashboardDataSource } from "./source";
 
 export type WorkspacePageSession = WorkspacePageContext & {
   source: DashboardDataSource | null;
-  signOutAction: typeof signOut;
+  signOutAction?: typeof signOut;
 };
 
 export async function getWorkspacePageSession(pathname: string): Promise<WorkspacePageSession> {
@@ -20,7 +20,6 @@ export async function getWorkspacePageSession(pathname: string): Promise<Workspa
       role: "owner",
       mode: "demo",
       source: null,
-      signOutAction: signOut,
     };
   }
 

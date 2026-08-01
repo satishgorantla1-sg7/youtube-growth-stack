@@ -16,7 +16,7 @@ function source(overrides: Partial<DashboardDataSource> = {}): DashboardDataSour
     projects: () => ok([]),
     usage: () => ok([]),
     workspace: () => ok({ id: "workspace-1", name: "Studio", slug: "studio", plan: "starter", daily_credit_limit: 100 }),
-    navigationCounts: () => ok({ ideas: 0, packages: 0, approvals: 0 }),
+    navigationCounts: () => ok({ research: 0, ideas: 0, packages: 0, approvals: 0 }),
     ...overrides,
   };
 }
