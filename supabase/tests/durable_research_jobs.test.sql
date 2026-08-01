@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(12);
+select plan(19);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -81,6 +81,47 @@ select is((select count(*) from public.approvals where workspace_id = '10000000-
   'viewer can read approval records in their workspace');
 select is((select count(*) from public.research_runs where workspace_id = '20000000-2000-4000-8000-000000000002'), 0::bigint,
   'RLS hides the other tenant records from viewer');
+
+select ok(
+  not has_table_privilege('authenticated', 'public.approvals', 'UPDATE'),
+  'authenticated users cannot directly update approvals'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.approvals', 'DELETE'),
+  'authenticated users cannot delete approval evidence'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.research_runs', 'INSERT'),
+  'authenticated users cannot bypass the research RPC'
+);
+
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000003', true);
+select lives_ok(
+  $$insert into public.projects (workspace_id, name, created_by)
+    values ('10000000-1000-4000-8000-000000000001', 'Editor project', '10000000-0000-4000-8000-000000000003')$$,
+  'editor can create an ordinary workspace draft'
+);
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000004', true);
+select throws_ok(
+  $$insert into public.projects (workspace_id, name, created_by)
+    values ('10000000-1000-4000-8000-000000000001', 'Viewer project', '10000000-0000-4000-8000-000000000004')$$,
+  '42501', null, 'viewer cannot create workspace records'
+);
+
+reset role;
+select throws_ok(
+  $$update public.approvals set risk_summary = 'rewritten evidence'
+    where workspace_id = '10000000-1000-4000-8000-000000000001'$$,
+  'P0001', 'approval_request_is_immutable',
+  'approval request evidence remains immutable even for privileged SQL'
+);
+insert into public.audit_events (workspace_id, action, entity_type, entity_id)
+values ('10000000-1000-4000-8000-000000000001', 'tamper-fixture', 'test', 'security-test');
+select throws_ok(
+  $$update public.audit_events set metadata = '{"tampered":true}'::jsonb where action = 'tamper-fixture'$$,
+  'P0001', 'audit_evidence_is_append_only',
+  'audit events are append-only even for privileged SQL'
+);
 
 select * from finish();
 rollback;
