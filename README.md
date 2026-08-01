@@ -177,6 +177,8 @@ npm run dev
 
 Open `http://localhost:3000`. Demo mode is on by default and does not spend provider credits.
 
+To exercise real sign-up, sign-in, email callback, workspace onboarding, and sign-out, configure the two public Supabase variables and turn demo mode off. See [Supabase identity and workspace onboarding](docs/operations/auth-workspaces.md) for local setup, redirect configuration, policy tests, and migration/rollback notes.
+
 To verify the same gates used by pull requests:
 
 ```bash
@@ -214,7 +216,7 @@ Apify and Firecrawl availability does not grant permission to collect data. Depl
 ## Delivery roadmap
 
 1. Repository foundation, demo experience, schemas, agent instructions, and CI.
-2. Supabase authentication, onboarding, workspace creation, and tested RLS.
+2. Supabase authentication, onboarding, workspace creation, and tested RLS. (complete)
 3. YouTube OAuth and channel snapshot ingestion.
 4. Durable worker consumer for Supabase Queues/job records.
 5. Production Firecrawl and Apify contract tests with quotas.
