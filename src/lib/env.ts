@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const privateSchema = z.object({
   OPENAI_API_KEY: z.string().min(1).optional(),
-  OPENAI_REALTIME_MODEL: z.string().default("gpt-realtime-2.1"),
+  OPENAI_REALTIME_MODEL: z.string().default("gpt-realtime"),
   OPENAI_TRANSCRIPTION_MODEL: z.string().default("gpt-4o-transcribe"),
   OPENAI_SPEECH_MODEL: z.string().default("tts-1"),
   OPENAI_VOICE: z.string().default("marin"),
