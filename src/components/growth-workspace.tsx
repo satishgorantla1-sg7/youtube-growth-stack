@@ -2,25 +2,13 @@
 
 import {
   AudioLines,
-  BarChart3,
-  BookOpenText,
   Check,
   ChevronRight,
-  CircleUserRound,
   Clock3,
-  Compass,
-  FileText,
   Flame,
-  Home,
   Lightbulb,
   LoaderCircle,
-  LogOut,
-  Menu,
-  MessageSquareText,
   Mic,
-  Plus,
-  Search,
-  Settings,
   ShieldCheck,
   Sparkles,
   StopCircle,
@@ -29,7 +17,10 @@ import {
   VolumeX,
   Youtube,
 } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { WorkspaceEmptyState, WorkspaceShell } from "./workspace";
+import type { WorkspaceNavigationCounts, WorkspaceReadiness, WorkspaceUsageSummary } from "./workspace";
 
 type ApprovalState = "pending" | "submitting" | "queued" | "configuration_required" | "running" | "completed" | "failed" | "cancelled" | "error";
 
@@ -112,33 +103,54 @@ function starterMessages(displayName: string): Message[] {
   return [{
     id: "welcome",
     role: "assistant",
-    text: `Good morning, ${displayName}. I found three promising gaps in AI productivity content. Want me to turn the strongest one into a complete video package?`,
+    text: `Welcome, ${displayName}. Tell me what you want to research, or use voice to describe the next video you want to make.`,
   }];
 }
 
-const nav = [
-  { icon: Home, label: "Command centre", active: true },
-  { icon: Compass, label: "Research" },
-  { icon: Lightbulb, label: "Idea library" },
-  { icon: FileText, label: "Content packages" },
-  { icon: ShieldCheck, label: "Approvals", count: 2 },
-  { icon: BarChart3, label: "Performance" },
-];
+export type DashboardIdeaSummary = {
+  id: string;
+  title: string;
+  score: number | null;
+  signal: string | null;
+};
 
-const ideas = [
-  { score: 94, title: "I replaced 7 AI apps with one voice workflow", signal: "Fast-rising gap", tone: "signal-red" },
-  { score: 89, title: "The honest cost of building an AI second brain", signal: "High search intent", tone: "signal-indigo" },
-  { score: 86, title: "Stop prompting: build a system that remembers", signal: "Low competition", tone: "signal-green" },
-];
+export type DashboardApprovalSummary = {
+  id: string;
+  title: string;
+  kind: "research" | "content_package" | "other";
+  summary: string | null;
+};
 
-type GrowthWorkspaceProps = {
+export type GrowthWorkspaceDashboard = {
+  channel: { name: string; status: "connected" | "syncing" | "needs_attention" } | null;
+  ideas: DashboardIdeaSummary[];
+  approvals: DashboardApprovalSummary[];
+  activity: { sourcesAnalysed: number; packagesGenerated: number; bestSignal: string | null } | null;
+};
+
+export type GrowthWorkspaceProps = {
   displayName?: string;
   workspaceName?: string;
   workspaceId?: string;
   signOutAction?: () => Promise<void>;
+  dashboard?: GrowthWorkspaceDashboard | null;
+  usage?: WorkspaceUsageSummary | null;
+  readiness?: WorkspaceReadiness;
+  navigationCounts?: WorkspaceNavigationCounts;
+  mode?: "demo" | "connected";
 };
 
-export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Personal workspace", workspaceId, signOutAction }: GrowthWorkspaceProps) {
+export function GrowthWorkspace({
+  displayName = "Creator",
+  workspaceName = "Creator workspace",
+  workspaceId,
+  signOutAction,
+  dashboard = null,
+  usage = null,
+  readiness,
+  navigationCounts,
+  mode = "connected",
+}: GrowthWorkspaceProps) {
   const [messages, setMessages] = useState<Message[]>(() => starterMessages(displayName));
   const [prompt, setPrompt] = useState("");
   const [isThinking, setIsThinking] = useState(false);
@@ -147,7 +159,6 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [voiceError, setVoiceError] = useState("");
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
-  const [mobileNav, setMobileNav] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const microphoneStream = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -441,48 +452,18 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
   }
 
   return (
-    <main className="app-shell">
-      <aside className={mobileNav ? "sidebar sidebar-open" : "sidebar"}>
-        <div className="brand">
-          <span className="brand-mark"><Youtube size={22} fill="currentColor" /></span>
-          <span>Growth Stack</span>
-        </div>
-        <button className="new-project"><Plus size={17} /> New project</button>
-        <nav className="main-nav" aria-label="Workspace">
-          {nav.map((item) => (
-            <button className={item.active ? "nav-item nav-active" : "nav-item"} key={item.label}>
-              <item.icon size={18} /><span>{item.label}</span>
-              {item.count ? <span className="nav-count">{item.count}</span> : null}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-spacer" />
-        <div className="plan-card">
-          <div className="plan-icon"><Sparkles size={15} /></div>
-          <strong>Starter workspace</strong>
-          <span>62 of 100 credits left</span>
-          <div className="progress"><i /></div>
-          <button>View usage</button>
-        </div>
-        <div className="profile-row">
-          <CircleUserRound size={29} />
-          <span><strong>{displayName}</strong><small>{workspaceName}</small></span>
-          {signOutAction ? (
-            <form action={signOutAction}><button className="profile-action" type="submit" aria-label="Sign out"><LogOut size={16} /></button></form>
-          ) : <Settings size={16} />}
-        </div>
-      </aside>
-
-      <section className="workspace">
-        <header className="topbar">
-          <button className="mobile-menu" onClick={() => setMobileNav((value) => !value)} aria-label="Toggle navigation"><Menu /></button>
-          <div className="crumb"><span>Workspace</span><ChevronRight size={14} /><strong>Command centre</strong></div>
-          <div className="top-actions">
-            <button className="status-pill"><i /> All systems ready</button>
-            <button className="icon-button" aria-label="Search"><Search size={18} /></button>
-          </div>
-        </header>
-
+    <WorkspaceShell
+      activePath="/"
+      title="Command centre"
+      description="Voice-first research and planning"
+      displayName={displayName}
+      workspaceName={workspaceName}
+      signOutAction={signOutAction}
+      usage={usage}
+      readiness={readiness}
+      navigationCounts={navigationCounts}
+      mode={mode}
+    >
         <div className="content">
           <section className="hero-copy">
             <div>
@@ -490,11 +471,19 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
               <h1>What should we grow today?</h1>
               <p>Talk naturally. Your research agent will investigate, build, and bring every important decision back to you.</p>
             </div>
-            <div className="connected-channel">
-              <span className="channel-avatar"><Youtube size={21} fill="currentColor" /></span>
-              <span><small>Connected channel</small><strong>Satish Builds AI</strong></span>
-              <i>Live</i>
-            </div>
+            {dashboard?.channel ? (
+              <div className="connected-channel">
+                <span className="channel-avatar"><Youtube size={21} fill="currentColor" /></span>
+                <span><small>Connected channel</small><strong>{dashboard.channel.name}</strong></span>
+                <i>{dashboard.channel.status === "connected" ? "Connected" : dashboard.channel.status === "syncing" ? "Syncing" : "Check connection"}</i>
+              </div>
+            ) : (
+              <div className="connected-channel channel-empty">
+                <span className="channel-avatar"><Youtube size={21} /></span>
+                <span><small>YouTube channel</small><strong>No channel connected</strong></span>
+                <Link href="/settings">Connection settings</Link>
+              </div>
+            )}
           </section>
 
           <section className="command-card">
@@ -644,46 +633,60 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
             <article className="panel ideas-panel">
               <div className="panel-heading">
                 <div><span className="panel-icon red"><Lightbulb size={18} /></span><span><small>Fresh opportunities</small><h2>Ideas worth making</h2></span></div>
-                <button>View library <ChevronRight size={15} /></button>
+                <Link href="/ideas">View library <ChevronRight size={15} /></Link>
               </div>
-              <div className="idea-list">
-                {ideas.map((idea, index) => (
-                  <button className="idea-row" key={idea.title}>
-                    <span className="score-ring">{idea.score}</span>
-                    <span className="idea-copy"><small><i className={idea.tone} /> {idea.signal}</small><strong>{idea.title}</strong></span>
-                    <span className="rank">0{index + 1}</span>
-                  </button>
-                ))}
-              </div>
+              {dashboard?.ideas.length ? (
+                <div className="idea-list">
+                  {dashboard.ideas.map((idea, index) => (
+                    <Link className="idea-row" href={`/ideas/${idea.id}`} key={idea.id}>
+                      <span className="score-ring" aria-label={idea.score === null ? "Not scored" : `Analysis score ${idea.score}`}>{idea.score ?? "—"}</span>
+                      <span className="idea-copy"><small>{idea.signal ?? "Signal not analysed"}</small><strong>{idea.title}</strong></span>
+                      <span className="rank">{String(index + 1).padStart(2, "0")}</span>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <WorkspaceEmptyState
+                  status={dashboard ? "empty" : "unavailable"}
+                  title={dashboard ? "No ideas yet" : "Idea data is unavailable"}
+                  description={dashboard ? "Complete a research run to start building an evidence-backed idea library." : "We could not load workspace ideas. Refresh the page or try again later."}
+                  action={<Link href="/research">Open research</Link>}
+                />
+              )}
             </article>
 
             <article className="panel approval-panel">
               <div className="panel-heading">
                 <div><span className="panel-icon indigo"><ShieldCheck size={18} /></span><span><small>Your decision</small><h2>Approval queue</h2></span></div>
-                <span className="queue-count">2 waiting</span>
+                {dashboard?.approvals.length ? <span className="queue-count">{dashboard.approvals.length} waiting</span> : null}
               </div>
-              <div className="approval-card">
-                <div className="approval-meta"><span>Content package</span><span><Clock3 size={13} /> 4 min ago</span></div>
-                <h3>Voice workflows that replace your AI subscriptions</h3>
-                <p>3 titles · 2 thumbnail directions · hook · outline · full script</p>
-                <div className="approval-actions"><button className="approve"><Check size={16} /> Review & approve</button><button>Open brief</button></div>
-              </div>
-              <div className="approval-card muted-card">
-                <div className="approval-meta"><span>Research plan</span><span><Clock3 size={13} /> 18 min ago</span></div>
-                <h3>Deep scan: emerging agent frameworks</h3>
-                <p>Estimated cost: 12 credits · 20 sources</p>
-              </div>
+              {dashboard?.approvals.length ? dashboard.approvals.map((approval) => (
+                <div className="approval-card" key={approval.id}>
+                  <div className="approval-meta"><span>{approval.kind === "content_package" ? "Content package" : approval.kind === "research" ? "Research plan" : "Approval"}</span></div>
+                  <h3>{approval.title}</h3>
+                  {approval.summary ? <p>{approval.summary}</p> : null}
+                  <div className="approval-actions"><Link className="approve" href="/approvals"><ShieldCheck size={15} /> Review decision</Link></div>
+                </div>
+              )) : (
+                <WorkspaceEmptyState
+                  status={dashboard ? "empty" : "unavailable"}
+                  title={dashboard ? "Nothing waiting for approval" : "Approval data is unavailable"}
+                  description={dashboard ? "Research and content decisions that need you will appear here." : "We could not load the approval queue. Refresh the page or try again later."}
+                  action={<Link href="/approvals">Open approvals</Link>}
+                />
+              )}
             </article>
           </section>
 
-          <section className="activity-strip">
-            <div><span className="activity-icon"><BookOpenText size={18} /></span><span><small>This week</small><strong>42 sources analysed</strong></span></div>
-            <div><span className="activity-icon"><MessageSquareText size={18} /></span><span><small>Generated</small><strong>8 content packages</strong></span></div>
-            <div><span className="activity-icon"><BarChart3 size={18} /></span><span><small>Best signal</small><strong>AI workflow tutorials</strong></span></div>
-            <button>Open weekly report <ChevronRight size={15} /></button>
-          </section>
+          {dashboard?.activity ? (
+            <section className="activity-strip" aria-label="Workspace activity">
+              <div><span><small>Sources analysed</small><strong>{dashboard.activity.sourcesAnalysed}</strong></span></div>
+              <div><span><small>Packages generated</small><strong>{dashboard.activity.packagesGenerated}</strong></span></div>
+              <div><span><small>Best signal</small><strong>{dashboard.activity.bestSignal ?? "Not available yet"}</strong></span></div>
+              <Link href="/performance">View performance <ChevronRight size={15} /></Link>
+            </section>
+          ) : <WorkspaceEmptyState status={dashboard ? "empty" : "unavailable"} title="No activity summary yet" description="Activity appears after research and content work is completed." />}
         </div>
-      </section>
-    </main>
+    </WorkspaceShell>
   );
 }

@@ -245,3 +245,35 @@ button { color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+/* Route-aware workspace shell and truthful empty states. */
+.new-project, .nav-item, .plan-card a, .panel-heading > a, .idea-row, .approval-actions a, .activity-strip > a { text-decoration: none; }
+.plan-card .progress i { width: auto; }
+.plan-card a { margin-top: 2px; color: var(--accent-foreground); font-size: 10px; font-weight: 700; }
+.mobile-nav-close, .mobile-nav-backdrop { display: none; }
+.workspace-heading { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.workspace-heading strong { font-size: 12px; }
+.workspace-heading span { overflow: hidden; color: var(--muted-foreground); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.status-configuration_required i, .status-unavailable i { background: oklch(0.66 0.15 65); box-shadow: 0 0 0 3px oklch(0.66 0.15 65 / .14); }
+.demo-badge { padding: 5px 8px; border-radius: 999px; color: var(--accent-foreground); background: var(--accent); font-size: 9px; font-weight: 750; }
+.connected-channel > a { color: var(--accent-foreground); font-size: 9px; font-weight: 700; }
+.panel-heading > a { display: flex; align-items: center; gap: 2px; color: var(--muted-foreground); font-size: 9px; font-weight: 650; }
+.idea-row { color: inherit; }
+.approval-actions a { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: white; font-size: 8px; font-weight: 700; }
+.activity-strip > a { display: flex; align-items: center; gap: 3px; padding: 8px 10px; border-radius: 9px; color: white; background: var(--foreground); font-size: 8px; font-weight: 700; }
+.workspace-empty-state { display: grid; justify-items: start; gap: 6px; margin-top: 14px; padding: 16px; border: 1px dashed var(--border); border-radius: 13px; color: var(--muted-foreground); background: color-mix(in oklch, var(--muted) 58%, transparent); }
+.workspace-empty-state strong { color: var(--foreground); font-size: 11px; }
+.workspace-empty-state p { margin: 0; font-size: 9px; line-height: 1.5; }
+.workspace-empty-action a { color: var(--accent-foreground); font-size: 9px; font-weight: 750; }
+.empty-error { border-color: color-mix(in oklch, var(--destructive) 40%, var(--border)); }
+
+@media (max-width: 920px) {
+  .sidebar-open .mobile-nav-close { display: grid; place-items: center; margin-left: auto; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; }
+  .mobile-nav-backdrop { display: block; position: fixed; inset: 0; z-index: 9; border: 0; background: oklch(0.18 0.02 55 / .35); }
+  .workspace-heading { display: none; }
+}
+
+@media (max-width: 720px) {
+  .activity-strip > a { justify-content: center; }
+}
+
+.new-project:focus-visible, .nav-item:focus-visible, .plan-card a:focus-visible, .profile-action:focus-visible, .panel a:focus-visible, .activity-strip > a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
