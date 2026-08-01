@@ -25,9 +25,11 @@ import {
   Sparkles,
   StopCircle,
   Target,
+  Volume2,
+  VolumeX,
   Youtube,
 } from "lucide-react";
-import { FormEvent, useCallback, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type ApprovalState = "pending" | "submitting" | "queued" | "cancelled" | "error";
 
@@ -46,6 +48,22 @@ type Message = {
   text: string;
   approval?: ResearchApproval;
 };
+
+type VoiceStatus = "idle" | "listening" | "processing" | "review" | "speaking" | "interrupted" | "error";
+
+function recordingFilename(mimeType: string) {
+  const normalized = mimeType.split(";", 1)[0].toLowerCase();
+  const extension = normalized === "audio/mp4" || normalized === "audio/x-m4a"
+    ? "m4a"
+    : normalized === "audio/ogg"
+      ? "ogg"
+      : normalized === "audio/wav" || normalized === "audio/wave" || normalized === "audio/x-wav"
+        ? "wav"
+        : normalized === "audio/mpeg"
+          ? "mp3"
+          : "webm";
+  return `voice.${extension}`;
+}
 
 type ResearchResponse = {
   approvalId?: string;
@@ -97,35 +115,129 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
   const [messages, setMessages] = useState<Message[]>(() => starterMessages(displayName));
   const [prompt, setPrompt] = useState("");
   const [isThinking, setIsThinking] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [voiceConsent, setVoiceConsent] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState("");
-  const [voiceStatus, setVoiceStatus] = useState<"idle" | "processing" | "review" | "error">("idle");
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [voiceError, setVoiceError] = useState("");
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
+  const microphoneStream = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
+  const replyAudio = useRef<HTMLAudioElement | null>(null);
+  const speechRequest = useRef<AbortController | null>(null);
+  const replyAudioUrl = useRef<string | null>(null);
+  const mounted = useRef(true);
 
-  const speak = useCallback(async (text: string) => {
+  const releaseReplyAudio = useCallback(() => {
+    if (replyAudio.current) {
+      replyAudio.current.pause();
+      replyAudio.current.removeAttribute("src");
+      replyAudio.current = null;
+    }
+    if (replyAudioUrl.current) {
+      URL.revokeObjectURL(replyAudioUrl.current);
+      replyAudioUrl.current = null;
+    }
+  }, []);
+
+  const stopReply = useCallback((showInterrupted = true) => {
+    speechRequest.current?.abort();
+    speechRequest.current = null;
+    releaseReplyAudio();
+    if (typeof window.speechSynthesis !== "undefined") window.speechSynthesis.cancel();
+    setSpeakingMessageId(null);
+    if (showInterrupted) {
+      setVoiceStatus("interrupted");
+      setVoiceError("");
+    }
+  }, [releaseReplyAudio]);
+
+  const speakWithBrowser = useCallback((text: string) => {
+    if (typeof window.speechSynthesis === "undefined" || typeof SpeechSynthesisUtterance === "undefined") {
+      setSpeakingMessageId(null);
+      setVoiceStatus("error");
+      setVoiceError("Audio playback is unavailable in this browser. You can still read the reply.");
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.onstart = () => mounted.current && setVoiceStatus("speaking");
+    utterance.onend = () => {
+      if (!mounted.current) return;
+      setSpeakingMessageId(null);
+      setVoiceStatus("idle");
+    };
+    utterance.onerror = () => {
+      if (!mounted.current) return;
+      setSpeakingMessageId(null);
+      setVoiceStatus("error");
+      setVoiceError("I couldn’t play that reply. You can still read it or try again.");
+    };
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const speak = useCallback(async (messageId: string, text: string) => {
+    stopReply(false);
+    setVoiceError("");
+    setSpeakingMessageId(messageId);
+    setVoiceStatus("processing");
+    const request = new AbortController();
+    speechRequest.current = request;
     try {
       const response = await fetch("/api/voice/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
+        signal: request.signal,
       });
-      if (response.ok && response.status !== 204) {
-        const audio = new Audio(URL.createObjectURL(await response.blob()));
-        await audio.play();
+      if (request.signal.aborted) return;
+      speechRequest.current = null;
+      if (!response.ok || response.status === 204) {
+        speakWithBrowser(text);
         return;
       }
+      const url = URL.createObjectURL(await response.blob());
+      const audio = new Audio(url);
+      replyAudioUrl.current = url;
+      replyAudio.current = audio;
+      audio.onplay = () => mounted.current && setVoiceStatus("speaking");
+      audio.onended = () => {
+        releaseReplyAudio();
+        if (mounted.current) {
+          setSpeakingMessageId(null);
+          setVoiceStatus("idle");
+        }
+      };
+      audio.onerror = () => {
+        releaseReplyAudio();
+        if (mounted.current) speakWithBrowser(text);
+      };
+      await audio.play();
     } catch {
-      // The browser voice fallback below keeps demo mode fully usable.
+      if (request.signal.aborted) return;
+      speechRequest.current = null;
+      releaseReplyAudio();
+      if (mounted.current) speakWithBrowser(text);
     }
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-    }
-  }, []);
+  }, [releaseReplyAudio, speakWithBrowser, stopReply]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (recorder.current?.state === "recording") {
+        recorder.current.onstop = null;
+        recorder.current.stop();
+      }
+      microphoneStream.current?.getTracks().forEach((track) => track.stop());
+      microphoneStream.current = null;
+      speechRequest.current?.abort();
+      speechRequest.current = null;
+      releaseReplyAudio();
+      if (typeof window.speechSynthesis !== "undefined") window.speechSynthesis.cancel();
+    };
+  }, [releaseReplyAudio]);
 
   const submitPrompt = useCallback(async (value: string) => {
     const clean = value.trim();
@@ -150,7 +262,6 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
         status: "pending" as const,
       } : undefined;
       setMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", text: reply, approval }]);
-      void speak(reply);
     } catch {
       setMessages((current) => [
         ...current,
@@ -159,7 +270,7 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
     } finally {
       setIsThinking(false);
     }
-  }, [isThinking, speak, workspaceId]);
+  }, [isThinking, workspaceId]);
 
   const decideApproval = useCallback(async (messageId: string, approvalId: string, decision: "approved" | "rejected") => {
     setMessages((current) => current.map((message) => message.id === messageId && message.approval
@@ -189,44 +300,53 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
   }
 
   async function toggleRecording() {
-    if (isRecording && recorder.current) {
+    if (voiceStatus === "listening" && recorder.current) {
       setVoiceStatus("processing");
       recorder.current.stop();
-      setIsRecording(false);
       return;
     }
     if (!voiceConsent || voiceStatus === "processing" || voiceStatus === "review") return;
+    if (voiceStatus === "speaking") stopReply(false);
     try {
       setVoiceError("");
       setVoiceStatus("idle");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      microphoneStream.current = stream;
       const nextRecorder = new MediaRecorder(stream);
       chunks.current = [];
       nextRecorder.ondataavailable = (event) => chunks.current.push(event.data);
       nextRecorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
+        microphoneStream.current = null;
+        recorder.current = null;
         try {
           const audio = new Blob(chunks.current, { type: nextRecorder.mimeType });
           chunks.current = [];
           if (!audio.size) throw new Error("No audio was recorded.");
           const body = new FormData();
-          body.append("audio", audio, "voice.webm");
+          body.append("audio", audio, recordingFilename(nextRecorder.mimeType));
           const response = await fetch("/api/voice/transcribe", { method: "POST", body });
-          if (!response.ok) throw new Error("Transcription failed.");
-          const result = (await response.json()) as { text?: string };
+          const result = (await response.json().catch(() => ({}))) as { text?: string; message?: string; error?: string };
+          if (!response.ok) {
+            throw new Error(result.message ?? result.error ?? "Transcription failed. Check your connection or keep typing.");
+          }
           const transcript = result.text?.trim();
-          if (!transcript) throw new Error("No speech was detected.");
+          if (!transcript) throw new Error("No speech was detected. Try again closer to the microphone or keep typing.");
+          if (!mounted.current) return;
           setVoiceTranscript(transcript);
           setVoiceStatus("review");
         } catch (error) {
-          setVoiceError(error instanceof Error ? error.message : "I couldn’t transcribe that recording.");
+          if (!mounted.current) return;
+          setVoiceError(error instanceof Error ? error.message : "I couldn’t transcribe that recording. Please try again or keep typing.");
+          setSpeakingMessageId(null);
           setVoiceStatus("error");
         }
       };
       recorder.current = nextRecorder;
       nextRecorder.start();
-      setIsRecording(true);
+      setVoiceStatus("listening");
     } catch {
+      setSpeakingMessageId(null);
       setVoiceStatus("error");
       setVoiceError("Microphone access is blocked. Enable it in your browser settings or keep typing.");
       setMessages((current) => [...current, {
@@ -310,6 +430,17 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
                   <div>
                     <small>{message.role === "assistant" ? "Growth agent" : "You"}</small>
                     <p>{message.text}</p>
+                    {message.role === "assistant" ? (
+                      <button
+                        className="reply-audio-button"
+                        type="button"
+                        onClick={() => speakingMessageId === message.id && (voiceStatus === "processing" || voiceStatus === "speaking") ? stopReply() : void speak(message.id, message.text)}
+                        aria-label={speakingMessageId === message.id && (voiceStatus === "processing" || voiceStatus === "speaking") ? voiceStatus === "processing" ? "Cancel spoken reply" : "Stop spoken reply" : "Listen to reply"}
+                      >
+                        {speakingMessageId === message.id && (voiceStatus === "processing" || voiceStatus === "speaking") ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                        {speakingMessageId === message.id && (voiceStatus === "processing" || voiceStatus === "speaking") ? voiceStatus === "processing" ? "Cancel reply" : "Stop reply" : "Listen to reply"}
+                      </button>
+                    ) : null}
                     {message.approval ? (
                       <section className="conversation-approval" aria-label={`Research approval for ${message.approval.prompt}`}>
                         <div className="conversation-approval-heading">
@@ -382,28 +513,32 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
                   id="voice-upload-consent"
                   type="checkbox"
                   checked={voiceConsent}
-                  disabled={isRecording || voiceStatus === "processing"}
+                  disabled={voiceStatus === "listening" || voiceStatus === "processing"}
                   onChange={(event) => setVoiceConsent(event.target.checked)}
                 />
                 <span id="voice-upload-disclosure">I consent to this recording being uploaded to OpenAI for transcription. Growth Stack does not store the raw audio.</span>
               </label>
               <div className="voice-status" role="status" aria-live="polite">
-                {voiceStatus === "processing" ? "Uploading securely and transcribing…" : null}
+                {voiceStatus === "listening" ? "Listening. Select stop when you’re finished." : null}
+                {voiceStatus === "processing" ? speakingMessageId ? "Preparing the spoken reply…" : "Uploading securely and transcribing…" : null}
+                {voiceStatus === "review" ? "Transcript ready for your review." : null}
+                {voiceStatus === "speaking" ? "Playing the agent reply. You can stop it at any time." : null}
+                {voiceStatus === "interrupted" ? "Reply stopped." : null}
                 {voiceStatus === "error" ? voiceError : null}
               </div>
               <div className="composer-footer">
                 <div className="research-mode"><Target size={15} /><span>Quick research</span><ChevronRight size={14} /></div>
                 <div className="composer-actions">
-                  <span className={isRecording ? "listening active" : "listening"}><AudioLines size={15} />{isRecording ? "Listening…" : voiceStatus === "processing" ? "Transcribing…" : voiceConsent ? "Voice ready" : "Consent required"}</span>
+                  <span className={voiceStatus === "listening" ? "listening active" : "listening"}><AudioLines size={15} />{voiceStatus === "listening" ? "Listening…" : voiceStatus === "processing" ? "Processing…" : voiceStatus === "speaking" ? "Speaking…" : voiceConsent ? "Voice ready" : "Voice muted"}</span>
                   <button
-                    className={isRecording ? "mic-button recording" : "mic-button"}
+                    className={voiceStatus === "listening" ? "mic-button recording" : "mic-button"}
                     type="button"
                     onClick={toggleRecording}
-                    aria-label={isRecording ? "Stop recording" : "Start recording"}
+                    aria-label={voiceStatus === "listening" ? "Stop recording" : "Start recording"}
                     aria-describedby="voice-upload-disclosure"
                     disabled={!voiceConsent || voiceStatus === "processing" || voiceStatus === "review"}
                   >
-                    {isRecording ? <StopCircle size={23} /> : <Mic size={23} />}
+                    {voiceStatus === "listening" ? <StopCircle size={23} /> : <Mic size={23} />}
                   </button>
                   <button className="send-button" type="submit" disabled={!prompt.trim() || isThinking}><ChevronRight size={21} /></button>
                 </div>

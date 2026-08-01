@@ -126,6 +126,9 @@ button { color: inherit; }
 .voice-consent { display: flex; align-items: flex-start; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 9px; line-height: 1.45; }
 .voice-consent input { margin-top: 1px; accent-color: var(--primary); }
 .voice-status { min-height: 14px; padding: 0 14px; color: var(--muted-foreground); font-size: 9px; }
+.reply-audio-button { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted-foreground); background: var(--card); font-size: 9px; font-weight: 700; cursor: pointer; }
+.reply-audio-button:hover { color: var(--foreground); border-color: color-mix(in oklch, var(--primary) 35%, var(--border)); }
+.reply-audio-button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .voice-review { margin: 10px; padding: 12px; border: 1px solid color-mix(in oklch, var(--primary) 35%, var(--border)); border-radius: 12px; background: color-mix(in oklch, var(--primary) 5%, var(--card)); }
 .voice-review p { margin: 4px 0 7px; color: var(--muted-foreground); font-size: 9px; }
 .voice-review textarea { min-height: 76px; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); }

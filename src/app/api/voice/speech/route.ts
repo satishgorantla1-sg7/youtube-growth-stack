@@ -5,6 +5,9 @@ import { authorizeVoiceRequest } from "@/lib/voice/access";
 
 const speechSchema = z.object({ text: z.string().trim().min(1).max(2_000) });
 
+const unavailable = (error: string, message: string) =>
+  NextResponse.json({ error, message }, { status: 503 });
+
 export async function POST(request: Request) {
   const access = await authorizeVoiceRequest("speech");
   if (!access.allowed) return access.response;
@@ -13,10 +16,20 @@ export async function POST(request: Request) {
   }
   const parsed = speechSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid speech request" }, { status: 400 });
-  if (access.demo) return new Response(null, { status: 204 });
+  if (access.demo) {
+    return unavailable(
+      "voice_speech_unavailable",
+      "OpenAI speech is unavailable in demo mode. Use the browser speech fallback or continue with text.",
+    );
+  }
 
   const env = serverEnv();
-  if (!env.OPENAI_API_KEY) return NextResponse.json({ error: "Speech generation is not configured" }, { status: 503 });
+  if (!env.OPENAI_API_KEY) {
+    return unavailable(
+      "voice_speech_not_configured",
+      "Speech playback needs an OPENAI_API_KEY on the server. Add it to the deployment environment, then retry.",
+    );
+  }
   let response: Response;
   try {
     response = await fetch("https://api.openai.com/v1/audio/speech", {
@@ -26,8 +39,21 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(30_000),
     });
   } catch {
-    return NextResponse.json({ error: "Speech generation timed out" }, { status: 504 });
+    return NextResponse.json(
+      { error: "voice_speech_timeout", message: "OpenAI did not respond in time. Please retry or use text output." },
+      { status: 504 },
+    );
   }
-  if (!response.ok) return NextResponse.json({ error: "Speech generation failed" }, { status: 502 });
-  return new Response(response.body, { headers: { "Content-Type": response.headers.get("Content-Type") ?? "audio/mpeg" } });
+  if (!response.ok) {
+    return NextResponse.json(
+      { error: "voice_speech_failed", message: "OpenAI could not generate speech. Please retry or use text output." },
+      { status: 502 },
+    );
+  }
+  return new Response(response.body, {
+    headers: {
+      "Content-Type": response.headers.get("Content-Type") ?? "audio/mpeg",
+      "Cache-Control": "no-store",
+    },
+  });
 }

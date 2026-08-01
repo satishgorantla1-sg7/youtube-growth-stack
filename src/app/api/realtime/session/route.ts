@@ -2,13 +2,26 @@ import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env";
 import { authorizeVoiceRequest } from "@/lib/voice/access";
 
+const unavailable = (error: string, message: string) =>
+  NextResponse.json({ error, message }, { status: 503 });
+
 export async function POST() {
   const access = await authorizeVoiceRequest("realtime");
   if (!access.allowed) return access.response;
-  if (access.demo) return NextResponse.json({ error: "Realtime voice is unavailable in demo mode" }, { status: 503 });
+  if (access.demo) {
+    return unavailable(
+      "realtime_voice_unavailable",
+      "Realtime voice is unavailable in demo mode. Configure OpenAI and disable demo mode, or continue with text.",
+    );
+  }
 
   const env = serverEnv();
-  if (!env.OPENAI_API_KEY) return NextResponse.json({ error: "Realtime voice is not configured" }, { status: 503 });
+  if (!env.OPENAI_API_KEY) {
+    return unavailable(
+      "realtime_voice_not_configured",
+      "Realtime voice needs an OPENAI_API_KEY on the server. Add it to the deployment environment, then retry.",
+    );
+  }
   let response: Response;
   try {
     response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
@@ -23,8 +36,24 @@ export async function POST() {
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
-    return NextResponse.json({ error: "Realtime session timed out" }, { status: 504 });
+    return NextResponse.json(
+      { error: "realtime_session_timeout", message: "OpenAI did not create a voice session in time. Please retry." },
+      { status: 504 },
+    );
   }
-  if (!response.ok) return NextResponse.json({ error: "Could not create a Realtime session" }, { status: 502 });
-  return NextResponse.json(await response.json());
+  if (!response.ok) {
+    return NextResponse.json(
+      { error: "realtime_session_failed", message: "OpenAI could not create a voice session. Please retry or use text." },
+      { status: 502 },
+    );
+  }
+
+  const session = await response.json().catch(() => null) as Record<string, unknown> | null;
+  if (!session || typeof session.value !== "string" || !session.value) {
+    return NextResponse.json(
+      { error: "realtime_session_invalid", message: "OpenAI returned an invalid voice session. Please retry." },
+      { status: 502 },
+    );
+  }
+  return NextResponse.json(session, { headers: { "Cache-Control": "no-store" } });
 }
