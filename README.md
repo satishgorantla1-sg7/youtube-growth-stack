@@ -183,6 +183,14 @@ To verify the same gates used by pull requests:
 npm run verify
 ```
 
+Durable research runs stop for approval before provider execution. After applying the Supabase migrations and configuring server-only worker credentials, start the consumer with:
+
+```bash
+npm run worker:research
+```
+
+See [Durable research jobs](docs/DURABLE_RESEARCH_JOBS.md) for the lease/ack/fail contract, deployment requirements, and migration risk.
+
 ## Configure integrations
 
 Copy `.env.example` to `.env.local` and add only the integrations you are testing. Never prefix a secret with `NEXT_PUBLIC_`.
