@@ -1,19 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { authRedirect, isProtectedAppPath, onboardingConfigRedirect } from "./boundary";
+import { authRedirect, isProtectedAppPath } from "./boundary";
 
 describe("auth route boundary", () => {
   it("keeps demo mode open without Supabase", () => {
     expect(authRedirect({ configured: false, authenticated: false, pathname: "/", search: "" })).toBeNull();
   });
 
-  it("returns demo onboarding to the runnable workspace before a client is created", () => {
-    expect(onboardingConfigRedirect(false)).toBe("/");
-    expect(onboardingConfigRedirect(true)).toBeNull();
+  it("keeps the full demo onboarding route open without Supabase", () => {
+    expect(authRedirect({ configured: false, authenticated: false, pathname: "/onboarding", search: "" })).toBeNull();
   });
 
   it("sends anonymous connected-mode users to sign in with their destination", () => {
-    expect(authRedirect({ configured: true, authenticated: false, pathname: "/onboarding", search: "?step=workspace" }))
-      .toBe("/auth/sign-in?next=%2Fonboarding%3Fstep%3Dworkspace");
+    expect(authRedirect({ configured: true, authenticated: false, pathname: "/onboarding", search: "?stage=channel" }))
+      .toBe("/auth/sign-in?next=%2Fonboarding%3Fstage%3Dchannel");
+  });
+
+  it("does not loop an authenticated user away from staged onboarding", () => {
+    expect(authRedirect({ configured: true, authenticated: true, pathname: "/onboarding", search: "?stage=channel" })).toBeNull();
   });
 
   it("keeps callbacks and API routes public", () => {

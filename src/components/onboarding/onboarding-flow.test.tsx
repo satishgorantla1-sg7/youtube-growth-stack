@@ -74,4 +74,29 @@ describe("OnboardingFlow", () => {
     await waitFor(() => expect(screen.getByText(/microphone is ready/i)).toBeInTheDocument());
     expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
   });
+
+  it("starts connected-mode onboarding at channel with real workspace context", async () => {
+    const connect = vi.fn().mockResolvedValue(connectedChannel);
+    render(
+      <OnboardingFlow
+        connectionAdapter={{ connect }}
+        initialStep="channel"
+        initialDisplayName="Morgan"
+        initialWorkspaceName="Morgan Studio"
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: /connect your youtube channel/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/what should we call you/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Workspace").parentElement).toHaveTextContent("Complete");
+
+    fireEvent.click(screen.getByLabelText(/ready to continue to google/i));
+    fireEvent.click(screen.getByRole("button", { name: /connect channel/i }));
+    await waitFor(() => expect(screen.getByText(/channel connected/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    fireEvent.click(screen.getByRole("button", { name: /continue with text/i }));
+
+    expect(screen.getByRole("heading", { name: /ready to grow, morgan/i })).toBeInTheDocument();
+    expect(screen.getByText(/morgan studio workspace/i)).toBeInTheDocument();
+  });
 });

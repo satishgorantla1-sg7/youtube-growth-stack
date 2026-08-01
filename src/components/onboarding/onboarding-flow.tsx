@@ -14,10 +14,10 @@ import {
 } from "@/lib/providers/channel-connection";
 import styles from "./onboarding-flow.module.css";
 
-type Step = "profile" | "channel" | "voice" | "complete";
+export type OnboardingStep = "profile" | "channel" | "voice" | "complete";
 type VoiceState = "idle" | "requesting" | "ready" | "denied" | "unavailable";
 
-const steps: { id: Step; label: string }[] = [
+const steps: { id: OnboardingStep; label: string }[] = [
   { id: "profile", label: "Workspace" },
   { id: "channel", label: "Channel" },
   { id: "voice", label: "Voice" },
@@ -35,14 +35,20 @@ const connectionCopy: Record<ChannelConnectionState["status"], { title: string; 
 export function OnboardingFlow({
   connectionAdapter,
   initialConnectionState = { status: "disconnected" },
+  initialStep = "profile",
+  initialDisplayName = "",
+  initialWorkspaceName = "",
 }: {
   connectionAdapter?: ChannelConnectionAdapter;
   initialConnectionState?: ChannelConnectionState;
+  initialStep?: OnboardingStep;
+  initialDisplayName?: string;
+  initialWorkspaceName?: string;
 }) {
   const adapter = useMemo(() => connectionAdapter ?? createDemoChannelConnection(), [connectionAdapter]);
-  const [step, setStep] = useState<Step>("profile");
-  const [displayName, setDisplayName] = useState("");
-  const [workspaceName, setWorkspaceName] = useState("");
+  const [step, setStep] = useState<OnboardingStep>(initialStep);
+  const [displayName, setDisplayName] = useState(initialDisplayName);
+  const [workspaceName, setWorkspaceName] = useState(initialWorkspaceName);
   const [connection, setConnection] = useState<ChannelConnectionState>(initialConnectionState);
   const [channelConsent, setChannelConsent] = useState(false);
   const [voiceConsent, setVoiceConsent] = useState(false);

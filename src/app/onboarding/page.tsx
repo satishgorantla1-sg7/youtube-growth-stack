@@ -1,27 +1,55 @@
 import { redirect } from "next/navigation";
 import { AuthForm } from "@/components/auth-form";
 import { AuthShell } from "@/components/auth-shell";
+import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
 import { createWorkspace } from "@/app/auth/actions";
 import { createClient } from "@/lib/supabase/server";
 import { ensureWorkspace } from "@/lib/auth/workspace";
-import { onboardingConfigRedirect } from "@/lib/auth/boundary";
 import { hasSupabaseConfig } from "@/lib/env";
+
+export const metadata = {
+  title: "Set up your workspace · YouTube Growth Stack",
+  description: "Create a workspace, connect a channel, and choose how to use voice.",
+};
 
 export const dynamic = "force-dynamic";
 
-export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const configRedirect = onboardingConfigRedirect(hasSupabaseConfig());
-  if (configRedirect) redirect(configRedirect);
-
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; stage?: string }>;
+}) {
   const params = await searchParams;
+  if (!hasSupabaseConfig()) return <OnboardingFlow />;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/auth/sign-in?next=%2Fonboarding");
+  if (!user) {
+    const next = params.stage === "channel" ? "/onboarding?stage=channel" : "/onboarding";
+    redirect(`/auth/sign-in?next=${encodeURIComponent(next)}`);
+  }
 
   const current = await ensureWorkspace(supabase);
-  if (current.workspaceId) redirect("/");
-
   const metadata = user.user_metadata as Record<string, unknown>;
+  const fullName = typeof metadata.full_name === "string" ? metadata.full_name : "";
+  const displayName = fullName || user.email?.split("@")[0] || "Creator";
+
+  if (current.workspaceId) {
+    if (params.stage !== "channel") redirect("/");
+    const { data: workspace } = await supabase
+      .from("workspaces")
+      .select("name")
+      .eq("id", current.workspaceId)
+      .single();
+    return (
+      <OnboardingFlow
+        initialStep="channel"
+        initialDisplayName={displayName}
+        initialWorkspaceName={workspace?.name ?? "Creator workspace"}
+      />
+    );
+  }
+
   const defaults = {
     workspaceName: typeof metadata.pending_workspace_name === "string" ? metadata.pending_workspace_name : "",
     workspaceSlug: typeof metadata.pending_workspace_slug === "string" ? metadata.pending_workspace_slug : "",
