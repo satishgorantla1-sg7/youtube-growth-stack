@@ -19,6 +19,14 @@ export const signUpSchema = z.object({
 });
 
 export const workspaceSchema = signUpSchema.pick({ workspaceName: true, workspaceSlug: true });
+export const passwordResetRequestSchema = z.object({ email });
+export const updatePasswordSchema = z.object({
+  password,
+  confirmPassword: password,
+}).refine((value) => value.password === value.confirmPassword, {
+  message: "Passwords do not match.",
+  path: ["confirmPassword"],
+});
 
 export type AuthActionState = {
   error?: string;

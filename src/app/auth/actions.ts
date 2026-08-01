@@ -6,9 +6,11 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureWorkspace } from "@/lib/auth/workspace";
 import {
   firstValidationError,
+  passwordResetRequestSchema,
   safeNextPath,
   signInSchema,
   signUpSchema,
+  updatePasswordSchema,
   workspaceSchema,
   type AuthActionState,
 } from "@/lib/auth/validation";
@@ -48,6 +50,39 @@ export async function signIn(_state: AuthActionState, formData: FormData): Promi
 
   const workspace = await ensureWorkspace(supabase);
   redirect(workspace.workspaceId ? safeNextPath(parsed.data.next) : "/onboarding");
+}
+
+export async function requestPasswordReset(_state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  if (!hasSupabaseConfig()) return unavailable();
+
+  const parsed = passwordResetRequestSchema.safeParse({ email: field(formData, "email") });
+  if (!parsed.success) return { error: firstValidationError(parsed.error) };
+
+  const supabase = await createClient();
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: `${appUrl}/auth/callback?next=${encodeURIComponent("/auth/update-password")}`,
+  });
+
+  return { message: "If an account exists for that email, a password-reset link is on its way. Check your inbox and spam folder." };
+}
+
+export async function updatePassword(_state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  if (!hasSupabaseConfig()) return unavailable();
+
+  const parsed = updatePasswordSchema.safeParse({
+    password: field(formData, "password"),
+    confirmPassword: field(formData, "confirmPassword"),
+  });
+  if (!parsed.success) return { error: firstValidationError(parsed.error) };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "This recovery link has expired. Request a new password-reset email." };
+
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
+  if (error) return { error: "We couldn’t update your password. Request a new recovery link and try again." };
+  redirect("/");
 }
 
 export async function signUp(_state: AuthActionState, formData: FormData): Promise<AuthActionState> {
