@@ -65,6 +65,10 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
   const [prompt, setPrompt] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [voiceConsent, setVoiceConsent] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceStatus, setVoiceStatus] = useState<"idle" | "processing" | "review" | "error">("idle");
+  const [voiceError, setVoiceError] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -123,33 +127,59 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
 
   async function toggleRecording() {
     if (isRecording && recorder.current) {
+      setVoiceStatus("processing");
       recorder.current.stop();
       setIsRecording(false);
       return;
     }
+    if (!voiceConsent || voiceStatus === "processing" || voiceStatus === "review") return;
     try {
+      setVoiceError("");
+      setVoiceStatus("idle");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const nextRecorder = new MediaRecorder(stream);
       chunks.current = [];
       nextRecorder.ondataavailable = (event) => chunks.current.push(event.data);
       nextRecorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
-        const body = new FormData();
-        body.append("audio", new Blob(chunks.current, { type: nextRecorder.mimeType }), "voice.webm");
-        const response = await fetch("/api/voice/transcribe", { method: "POST", body });
-        const result = (await response.json()) as { text?: string };
-        if (result.text) await submitPrompt(result.text);
+        try {
+          const audio = new Blob(chunks.current, { type: nextRecorder.mimeType });
+          chunks.current = [];
+          if (!audio.size) throw new Error("No audio was recorded.");
+          const body = new FormData();
+          body.append("audio", audio, "voice.webm");
+          const response = await fetch("/api/voice/transcribe", { method: "POST", body });
+          if (!response.ok) throw new Error("Transcription failed.");
+          const result = (await response.json()) as { text?: string };
+          const transcript = result.text?.trim();
+          if (!transcript) throw new Error("No speech was detected.");
+          setVoiceTranscript(transcript);
+          setVoiceStatus("review");
+        } catch (error) {
+          setVoiceError(error instanceof Error ? error.message : "I couldn’t transcribe that recording.");
+          setVoiceStatus("error");
+        }
       };
       recorder.current = nextRecorder;
       nextRecorder.start();
       setIsRecording(true);
     } catch {
+      setVoiceStatus("error");
+      setVoiceError("Microphone access is blocked. Enable it in your browser settings or keep typing.");
       setMessages((current) => [...current, {
         id: crypto.randomUUID(),
         role: "assistant",
         text: "Microphone access is blocked. You can enable it in your browser settings or keep typing here.",
       }]);
     }
+  }
+
+  async function confirmVoiceTranscript() {
+    const transcript = voiceTranscript.trim();
+    if (!transcript || isThinking) return;
+    setVoiceTranscript("");
+    setVoiceStatus("idle");
+    await submitPrompt(transcript);
   }
 
   return (
@@ -221,6 +251,22 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
             </div>
 
             <form className="composer" onSubmit={handleSubmit}>
+              {voiceStatus === "review" ? (
+                <div className="voice-review" aria-labelledby="voice-review-label">
+                  <label id="voice-review-label" htmlFor="voice-transcript"><strong>Review your transcript</strong></label>
+                  <p>Edit anything OpenAI misheard. Nothing is sent to your growth agent until you confirm.</p>
+                  <textarea
+                    id="voice-transcript"
+                    aria-label="Review voice transcript"
+                    value={voiceTranscript}
+                    onChange={(event) => setVoiceTranscript(event.target.value)}
+                  />
+                  <div className="voice-review-actions">
+                    <button type="button" onClick={() => { setVoiceTranscript(""); setVoiceStatus("idle"); }}>Discard</button>
+                    <button type="button" onClick={() => void confirmVoiceTranscript()} disabled={!voiceTranscript.trim() || isThinking}>Send transcript to agent</button>
+                  </div>
+                </div>
+              ) : null}
               <textarea
                 aria-label="Message your growth agent"
                 placeholder="Ask for ideas, analyse a competitor, or build a complete video package…"
@@ -233,11 +279,32 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
                   }
                 }}
               />
+              <label className="voice-consent" htmlFor="voice-upload-consent">
+                <input
+                  id="voice-upload-consent"
+                  type="checkbox"
+                  checked={voiceConsent}
+                  disabled={isRecording || voiceStatus === "processing"}
+                  onChange={(event) => setVoiceConsent(event.target.checked)}
+                />
+                <span id="voice-upload-disclosure">I consent to this recording being uploaded to OpenAI for transcription. Growth Stack does not store the raw audio.</span>
+              </label>
+              <div className="voice-status" role="status" aria-live="polite">
+                {voiceStatus === "processing" ? "Uploading securely and transcribing…" : null}
+                {voiceStatus === "error" ? voiceError : null}
+              </div>
               <div className="composer-footer">
                 <div className="research-mode"><Target size={15} /><span>Quick research</span><ChevronRight size={14} /></div>
                 <div className="composer-actions">
-                  <span className={isRecording ? "listening active" : "listening"}><AudioLines size={15} />{isRecording ? "Listening…" : "Voice ready"}</span>
-                  <button className={isRecording ? "mic-button recording" : "mic-button"} type="button" onClick={toggleRecording} aria-label={isRecording ? "Stop recording" : "Start recording"}>
+                  <span className={isRecording ? "listening active" : "listening"}><AudioLines size={15} />{isRecording ? "Listening…" : voiceStatus === "processing" ? "Transcribing…" : voiceConsent ? "Voice ready" : "Consent required"}</span>
+                  <button
+                    className={isRecording ? "mic-button recording" : "mic-button"}
+                    type="button"
+                    onClick={toggleRecording}
+                    aria-label={isRecording ? "Stop recording" : "Start recording"}
+                    aria-describedby="voice-upload-disclosure"
+                    disabled={!voiceConsent || voiceStatus === "processing" || voiceStatus === "review"}
+                  >
                     {isRecording ? <StopCircle size={23} /> : <Mic size={23} />}
                   </button>
                   <button className="send-button" type="submit" disabled={!prompt.trim() || isThinking}><ChevronRight size={21} /></button>

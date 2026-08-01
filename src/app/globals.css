@@ -110,6 +110,16 @@ button { color: inherit; }
 .composer { margin: 14px 20px 0; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: 0 14px 30px -25px black; }
 .composer textarea { display: block; width: 100%; min-height: 69px; resize: none; padding: 15px 16px 8px; border: 0; outline: none; background: transparent; font-size: 12px; line-height: 1.5; }
 .composer textarea::placeholder { color: color-mix(in oklch, var(--muted-foreground) 72%, white); }
+.voice-consent { display: flex; align-items: flex-start; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 9px; line-height: 1.45; }
+.voice-consent input { margin-top: 1px; accent-color: var(--primary); }
+.voice-status { min-height: 14px; padding: 0 14px; color: var(--muted-foreground); font-size: 9px; }
+.voice-review { margin: 10px; padding: 12px; border: 1px solid color-mix(in oklch, var(--primary) 35%, var(--border)); border-radius: 12px; background: color-mix(in oklch, var(--primary) 5%, var(--card)); }
+.voice-review p { margin: 4px 0 7px; color: var(--muted-foreground); font-size: 9px; }
+.voice-review textarea { min-height: 76px; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); }
+.voice-review-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 8px; }
+.voice-review-actions button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); cursor: pointer; }
+.voice-review-actions button:last-child { color: white; border-color: var(--primary); background: var(--primary); }
+.voice-review-actions button:disabled, .mic-button:disabled { opacity: .4; cursor: not-allowed; }
 .composer-footer { display: flex; align-items: center; justify-content: space-between; padding: 5px 7px 7px 13px; }
 .research-mode { display: flex; align-items: center; gap: 6px; color: var(--muted-foreground); font-size: 9px; font-weight: 650; }
 .composer-actions { display: flex; align-items: center; gap: 7px; }

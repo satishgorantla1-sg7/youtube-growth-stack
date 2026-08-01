@@ -217,6 +217,8 @@ The application stops for explicit approval before paid deep research, channel a
 
 Apify and Firecrawl availability does not grant permission to collect data. Deployers remain responsible for YouTube policies, provider terms, privacy notices, OAuth verification, deletion handling, and local law.
 
+Before enabling production credentials, read the [public-launch safety and operations checklist](docs/SAFETY.md). It distinguishes safeguards already enforced from release-blocking voice privacy, provider policy, quota, monitoring, and kill-switch work.
+
 ## Delivery roadmap
 
 1. Repository foundation, demo experience, schemas, agent instructions, and CI.
