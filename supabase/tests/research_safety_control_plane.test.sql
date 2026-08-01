@@ -409,9 +409,10 @@ select throws_ok(
     (current_setting('test.expiry_job')::jsonb->>'id')::uuid),
   '23503', null, 'provider invocation cannot pair a job with another run in the same workspace'
 );
-select like(
-  pg_get_functiondef('public.lease_research_job(text,integer)'::regprocedure),
-  '%research-job-lease:global%', 'lease count and transition are advisory-lock serialized'
+select ok(
+  position('research-job-lease:global' in
+    pg_get_functiondef('public.lease_research_job(text,integer)'::regprocedure)) > 0,
+  'lease count and transition are advisory-lock serialized'
 );
 
 reset role;
