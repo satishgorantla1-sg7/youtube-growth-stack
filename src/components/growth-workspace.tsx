@@ -14,6 +14,7 @@ import {
   Home,
   Lightbulb,
   LoaderCircle,
+  LogOut,
   Menu,
   MessageSquareText,
   Mic,
@@ -30,13 +31,13 @@ import { FormEvent, useCallback, useRef, useState } from "react";
 
 type Message = { id: string; role: "user" | "assistant"; text: string };
 
-const starterMessages: Message[] = [
-  {
+function starterMessages(displayName: string): Message[] {
+  return [{
     id: "welcome",
     role: "assistant",
-    text: "Good morning, Satish. I found three promising gaps in AI productivity content. Want me to turn the strongest one into a complete video package?",
-  },
-];
+    text: `Good morning, ${displayName}. I found three promising gaps in AI productivity content. Want me to turn the strongest one into a complete video package?`,
+  }];
+}
 
 const nav = [
   { icon: Home, label: "Command centre", active: true },
@@ -53,8 +54,14 @@ const ideas = [
   { score: 86, title: "Stop prompting: build a system that remembers", signal: "Low competition", tone: "signal-green" },
 ];
 
-export function GrowthWorkspace() {
-  const [messages, setMessages] = useState<Message[]>(starterMessages);
+type GrowthWorkspaceProps = {
+  displayName?: string;
+  workspaceName?: string;
+  signOutAction?: () => Promise<void>;
+};
+
+export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Personal workspace", signOutAction }: GrowthWorkspaceProps) {
+  const [messages, setMessages] = useState<Message[]>(() => starterMessages(displayName));
   const [prompt, setPrompt] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -169,11 +176,13 @@ export function GrowthWorkspace() {
           <div className="progress"><i /></div>
           <button>View usage</button>
         </div>
-        <button className="profile-row">
+        <div className="profile-row">
           <CircleUserRound size={29} />
-          <span><strong>Satish</strong><small>Personal workspace</small></span>
-          <Settings size={16} />
-        </button>
+          <span><strong>{displayName}</strong><small>{workspaceName}</small></span>
+          {signOutAction ? (
+            <form action={signOutAction}><button className="profile-action" type="submit" aria-label="Sign out"><LogOut size={16} /></button></form>
+          ) : <Settings size={16} />}
+        </div>
       </aside>
 
       <section className="workspace">
