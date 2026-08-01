@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(10);
+select plan(12);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -21,6 +21,11 @@ insert into public.workspace_members (workspace_id, user_id, role) values
   ('10000000-1000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000003', 'editor'),
   ('10000000-1000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000004', 'viewer'),
   ('20000000-2000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000005', 'owner');
+
+insert into public.approvals (id, workspace_id, entity_type, entity_id, state, risk_summary, estimated_credits, requested_by)
+values ('20000000-2000-4000-8000-000000000099', '20000000-2000-4000-8000-000000000002', 'research_plan',
+  '20000000-2000-4000-8000-000000000098', 'pending', 'Foreign tenant research', 1,
+  '20000000-0000-4000-8000-000000000005');
 
 set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
@@ -61,6 +66,14 @@ select throws_ok(
   'P0001', 'research_create_forbidden', 'role checks do not disclose or cross tenant boundaries'
 );
 
+select throws_ok(
+  $$select public.decide_research_approval('99999999-9999-4999-8999-999999999999', 'approved', null)$$,
+  'P0001', 'research_approval_forbidden', 'missing approval IDs do not disclose existence'
+);
+select throws_ok(
+  $$select public.decide_research_approval('20000000-2000-4000-8000-000000000099', 'approved', null)$$,
+  'P0001', 'research_approval_forbidden', 'foreign approval IDs match the missing-ID error'
+);
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000004', true);
 select is((select count(*) from public.research_runs where workspace_id = '10000000-1000-4000-8000-000000000001'), 2::bigint,
   'viewer can read research records in their workspace');
