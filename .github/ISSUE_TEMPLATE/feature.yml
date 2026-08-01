@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a testable product outcome
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: User outcome
+      description: What should a creator be able to accomplish?
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Acceptance criteria
+      description: Add observable, testable statements.
+      placeholder: "- [ ] Given… when… then…"
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and approvals
+      description: Note cost, provider, privacy, tenancy, voice, and human-approval implications.

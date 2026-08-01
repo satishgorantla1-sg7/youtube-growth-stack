@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YT Growth Stack  -  Conversational Systems Atlas</title>
+  <style>
+    :root {
+      --paper: #f6f3ec;
+      --ink: #17171b;
+      --muted: #62616a;
+      --line: #c9c4b8;
+      --violet: #6d4aff;
+      --violet-soft: #ebe6ff;
+      --blue: #1769e0;
+      --blue-soft: #e3efff;
+      --cyan: #007f91;
+      --cyan-soft: #def7f8;
+      --amber: #a85d00;
+      --amber-soft: #fff0ce;
+      --green: #157347;
+      --green-soft: #dff5e9;
+      --red: #b42318;
+      --red-soft: #ffe6e2;
+      --white: #fffefa;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: #26252a; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #26252a;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.35;
+    }
+
+    a { color: inherit; }
+    .page {
+      width: min(1600px, 100vw);
+      min-height: 900px;
+      margin: 24px auto;
+      padding: 46px 54px 42px;
+      overflow: hidden;
+      background:
+        linear-gradient(rgba(23,23,27,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(23,23,27,.035) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      box-shadow: 0 18px 70px rgba(0,0,0,.3);
+      break-after: page;
+      position: relative;
+    }
+
+    .kicker, .eyebrow, .legend-label, .number {
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    .masthead {
+      display: grid;
+      grid-template-columns: 1.7fr .8fr;
+      gap: 40px;
+      align-items: end;
+      padding-bottom: 22px;
+      border-bottom: 3px solid var(--ink);
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      max-width: 980px;
+      margin-bottom: 10px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(52px, 5.4vw, 82px);
+      line-height: .92;
+      letter-spacing: -.045em;
+      font-weight: 700;
+    }
+    h2 {
+      margin-bottom: 10px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 38px;
+      line-height: 1;
+      letter-spacing: -.025em;
+    }
+    h3 { margin-bottom: 7px; font-size: 17px; line-height: 1.15; }
+    .subtitle { max-width: 850px; color: var(--muted); font-size: 18px; }
+    .meta { border-left: 1px solid var(--line); padding-left: 26px; color: var(--muted); }
+    .meta strong { color: var(--ink); }
+
+    .voice-spine {
+      display: grid;
+      grid-template-columns: 180px 1fr 230px;
+      align-items: center;
+      margin: 28px 0 22px;
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+      background: var(--white);
+    }
+    .voice-label, .voice-output { padding: 18px 20px; }
+    .voice-label { background: var(--violet); color: white; }
+    .voice-output { border-left: 1px solid var(--ink); }
+    .wave { height: 86px; width: 100%; display: block; }
+
+    .atlas-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      border-top: 1px solid var(--ink);
+      border-left: 1px solid var(--ink);
+      background: var(--white);
+    }
+    .layer {
+      min-height: 334px;
+      padding: 17px 16px 15px;
+      border-right: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+      position: relative;
+    }
+    .layer::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 6px; background: var(--accent); }
+    .layer .number { color: var(--accent); }
+    .layer h3 { margin-top: 22px; font-size: 20px; }
+    .layer p { min-height: 55px; color: var(--muted); font-size: 13px; }
+    .layer ul { margin: 17px 0 0; padding: 0; list-style: none; }
+    .layer li { padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; font-weight: 700; }
+    .experience { --accent: var(--violet); }
+    .voice { --accent: #9b5cff; }
+    .trust { --accent: var(--blue); }
+    .orchestration { --accent: #3555a8; }
+    .research { --accent: var(--cyan); }
+    .intelligence { --accent: var(--amber); }
+    .data { --accent: var(--green); }
+
+    .rails {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      margin-top: 18px;
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: white;
+    }
+    .rail { padding: 15px 20px; border-right: 1px solid #56545b; }
+    .rail:last-child { border-right: 0; }
+    .rail span { color: #c9c6d0; font-size: 13px; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; color: var(--muted); font-size: 12px; }
+    .key { display: inline-flex; align-items: center; gap: 7px; }
+    .swatch { width: 11px; height: 11px; background: var(--swatch); }
+
+    .section-head { display: flex; justify-content: space-between; gap: 40px; align-items: end; padding-bottom: 18px; border-bottom: 3px solid var(--ink); }
+    .section-head p { max-width: 640px; margin-bottom: 0; color: var(--muted); }
+
+    .journey {
+      display: grid;
+      grid-template-columns: repeat(9, minmax(0, 1fr));
+      align-items: stretch;
+      margin-top: 42px;
+      border: 1px solid var(--ink);
+      background: var(--white);
+    }
+    .step, .gate {
+      min-height: 190px;
+      padding: 18px 14px;
+      border-right: 1px solid var(--ink);
+      position: relative;
+    }
+    .step:last-child { border-right: 0; }
+    .step .eyebrow { color: var(--muted); }
+    .step h3 { margin-top: 26px; font-size: 18px; }
+    .step p { color: var(--muted); font-size: 12px; }
+    .gate { background: var(--green-soft); color: var(--green); text-align: center; }
+    .gate .diamond { width: 54px; height: 54px; margin: 14px auto 26px; border: 2px solid var(--green); transform: rotate(45deg); background: var(--white); }
+    .gate strong { display: block; color: var(--green); font-size: 14px; }
+    .journey-note { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; margin-top: 25px; }
+    .note { padding: 19px; border-top: 5px solid var(--accent); background: var(--white); }
+    .note p { margin-bottom: 0; color: var(--muted); font-size: 13px; }
+
+    .cockpit {
+      display: grid;
+      grid-template-columns: 1.08fr 1.6fr .95fr;
+      gap: 18px;
+      margin-top: 28px;
+    }
+    .panel { min-height: 510px; border: 1px solid var(--ink); background: var(--white); }
+    .panel-head { display: flex; justify-content: space-between; padding: 12px 15px; border-bottom: 1px solid var(--ink); font-weight: 800; }
+    .chat-body { padding: 17px; }
+    .message { max-width: 88%; margin-bottom: 14px; padding: 12px 14px; border-left: 4px solid var(--violet); background: var(--violet-soft); font-size: 13px; }
+    .message.agent { margin-left: auto; border-color: var(--ink); background: #efede7; }
+    .mic-orb { width: 116px; height: 116px; margin: 27px auto 15px; display: grid; place-items: center; border-radius: 50%; background: var(--violet); color: white; box-shadow: 0 0 0 12px var(--violet-soft), 0 0 0 13px var(--violet); font-size: 32px; font-weight: 900; }
+    .mic-caption { text-align: center; color: var(--muted); font-size: 12px; }
+    .artifact { padding: 15px; border-bottom: 1px solid var(--line); }
+    .artifact strong { display: block; margin-bottom: 5px; }
+    .artifact span { color: var(--muted); font-size: 12px; }
+    .evidence { padding: 15px; border-left: 4px solid var(--cyan); }
+    .score { display: inline-block; margin-top: 9px; padding: 3px 7px; color: var(--green); background: var(--green-soft); font-size: 11px; font-weight: 800; }
+    .approval-bar { padding: 13px 15px; color: white; background: var(--green); font-weight: 800; }
+
+    .two-loops { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 36px; }
+    .loop { border: 1px solid var(--ink); background: var(--white); }
+    .loop-title { padding: 20px; border-bottom: 1px solid var(--ink); }
+    .loop-title.product { border-left: 8px solid var(--amber); }
+    .loop-title.dev { border-left: 8px solid var(--blue); }
+    .loop-flow { display: grid; grid-template-columns: repeat(5, 1fr); padding: 26px 18px; }
+    .loop-node { min-height: 86px; padding: 12px 7px; border-top: 3px solid var(--accent); text-align: center; font-size: 12px; font-weight: 800; }
+    .boundary { margin-top: 26px; padding: 18px 22px; border: 2px solid var(--red); background: var(--red-soft); color: var(--red); }
+
+    .matrix { width: 100%; margin-top: 25px; border-collapse: collapse; background: var(--white); }
+    .matrix th, .matrix td { padding: 11px 13px; border: 1px solid var(--ink); text-align: left; vertical-align: top; font-size: 12px; }
+    .matrix th { color: white; background: var(--ink); text-transform: uppercase; letter-spacing: .08em; }
+    .matrix td:first-child { font-weight: 900; }
+    .source-strip { margin-top: 20px; color: var(--muted); font-size: 10px; column-count: 2; column-gap: 32px; }
+    .source-strip p { break-inside: avoid; margin-bottom: 8px; }
+
+    .footer-mark { position: absolute; right: 54px; bottom: 20px; color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+
+    @media (max-width: 1000px) {
+      .page { width: 100%; min-height: auto; margin: 0; padding: 28px 20px; }
+      .masthead, .section-head, .cockpit, .two-loops { grid-template-columns: 1fr; }
+      .atlas-grid, .journey { grid-template-columns: 1fr; }
+      .layer, .step, .gate { min-height: auto; border-bottom: 1px solid var(--ink); }
+      .voice-spine { grid-template-columns: 1fr; }
+      .voice-output { border-left: 0; border-top: 1px solid var(--ink); }
+      .rails, .journey-note { grid-template-columns: 1fr; }
+      .source-strip { column-count: 1; }
+    }
+
+    @media print {
+      @page { size: 16in 9in; margin: 0; }
+      html, body { background: white; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .page { width: 16in; height: 9in; min-height: 9in; margin: 0; box-shadow: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="page" aria-labelledby="atlas-title">
+      <header class="masthead">
+        <div>
+          <div class="kicker">Final logical architecture · v1.0 · 01 August 2026</div>
+          <h1 id="atlas-title">Conversational Systems Atlas</h1>
+          <p class="subtitle">A voice-first SaaS that turns a creator’s spoken intent and trusted market evidence into approved YouTube content packages.</p>
+        </div>
+        <div class="meta">
+          <p><strong>Product</strong><br />YT Growth Stack</p>
+          <p><strong>Visual premise</strong><br />Voice enters left. Approved creative work leaves right.</p>
+          <p><strong>Architecture stance</strong><br />Modular monolith first; extract workers when usage proves the need.</p>
+        </div>
+      </header>
+
+      <div class="voice-spine" aria-label="Primary customer outcome">
+        <div class="voice-label"><span class="eyebrow">Input</span><br /><strong>Talk to your agent</strong></div>
+        <svg class="wave" viewBox="0 0 1000 86" role="img" aria-label="Voice waveform becoming structured work">
+          <rect width="1000" height="86" fill="#fffefa"/>
+          <path d="M0 43 H88 L105 43 L119 18 L137 69 L157 29 L178 57 L199 39 H285 L310 43 L336 22 L357 63 L382 32 L409 50 L438 43 H540 L566 35 L591 51 L616 27 L641 61 L668 40 L700 43 H1000" fill="none" stroke="#6d4aff" stroke-width="5" stroke-linejoin="round"/>
+          <circle cx="768" cy="43" r="8" fill="#157347"/><circle cx="818" cy="43" r="8" fill="#157347"/><circle cx="868" cy="43" r="8" fill="#157347"/>
+          <path d="M900 43 H970 M958 31 L972 43 L958 55" fill="none" stroke="#17171b" stroke-width="4"/>
+        </svg>
+        <div class="voice-output"><span class="eyebrow">Output</span><br /><strong>Approve a content package</strong></div>
+      </div>
+
+      <div class="atlas-grid" aria-label="Seven architecture layers">
+        <article class="layer experience"><span class="number">Layer 01</span><h3>Experience</h3><p>The customer-facing command centre.</p><ul><li>Next.js + React</li><li>shadcn/ui</li><li>TweakCN tokens</li><li>Chat + artifact editor</li><li>Realtime progress</li></ul></article>
+        <article class="layer voice"><span class="number">Layer 02</span><h3>Voice</h3><p>Low-latency conversation with a visible transcript.</p><ul><li>WebRTC session</li><li>GPT-Live</li><li>GPT-Realtime-Whisper</li><li>Interrupt + replay</li><li>Text fallback</li></ul></article>
+        <article class="layer trust"><span class="number">Layer 03</span><h3>Trust</h3><p>Identity, tenancy, roles, and budgets.</p><ul><li>Supabase Auth</li><li>Workspaces + roles</li><li>Postgres RLS</li><li>OAuth secrets</li><li>Usage limits</li></ul></article>
+        <article class="layer orchestration"><span class="number">Layer 04</span><h3>Orchestration</h3><p>Durable work outside normal page requests.</p><ul><li>Job state machine</li><li>Retries + timeout</li><li>Cancellation</li><li>Idempotency</li><li>Approval events</li></ul></article>
+        <article class="layer research"><span class="number">Layer 05</span><h3>Research</h3><p>Owned, competitor, and wider web evidence.</p><ul><li>YouTube APIs</li><li>Apify Actors</li><li>Firecrawl</li><li>Normalization</li><li>Source provenance</li></ul></article>
+        <article class="layer intelligence"><span class="number">Layer 06</span><h3>Intelligence</h3><p>Evidence becomes ranked creative direction.</p><ul><li>Pattern extraction</li><li>Idea generation</li><li>Opportunity scoring</li><li>Package generation</li><li>Quality validation</li></ul></article>
+        <article class="layer data"><span class="number">Layer 07</span><h3>Data + Ops</h3><p>Durable state, files, events, and support.</p><ul><li>Supabase Postgres</li><li>Storage + Realtime</li><li>Audit logs</li><li>Cost + latency</li><li>Admin tools</li></ul></article>
+      </div>
+
+      <div class="rails">
+        <div class="rail"><strong>Security rail</strong><br /><span>Short-lived browser credentials · encrypted server secrets · workspace RLS</span></div>
+        <div class="rail"><strong>Evidence rail</strong><br /><span>Source URL · collected at · method · confidence · immutable artifact version</span></div>
+        <div class="rail"><strong>Human rail</strong><br /><span>Transcript · research scope · idea · package · publishing approval</span></div>
+      </div>
+
+      <div class="legend" aria-label="Colour legend">
+        <span class="legend-label">Legend</span>
+        <span class="key"><span class="swatch" style="--swatch:var(--violet)"></span>experience + voice</span>
+        <span class="key"><span class="swatch" style="--swatch:var(--blue)"></span>trust + control</span>
+        <span class="key"><span class="swatch" style="--swatch:var(--cyan)"></span>research</span>
+        <span class="key"><span class="swatch" style="--swatch:var(--amber)"></span>intelligence</span>
+        <span class="key"><span class="swatch" style="--swatch:var(--green)"></span>approval + durable state</span>
+      </div>
+      <div class="footer-mark">GOGH direction · design variance 8 · motion 4 · density 4 · strict accessibility</div>
+    </section>
+
+    <section class="page" aria-labelledby="journey-title">
+      <header class="section-head"><div><div class="kicker">Customer journey</div><h2 id="journey-title">From spoken intent to approved content</h2></div><p>The agent may research and propose, but the customer controls costly generation and consequential action. Every approval attaches to an immutable version.</p></header>
+      <div class="journey">
+        <article class="step"><span class="eyebrow">01 · Listen</span><h3>Speak naturally</h3><p>The customer describes a niche, goal, competitor, or creative direction.</p></article>
+        <article class="gate"><div class="diamond"></div><strong>Approve transcript</strong></article>
+        <article class="step"><span class="eyebrow">02 · Scope</span><h3>Plan research</h3><p>The agent shows sources, limits, estimated credits, and expected outputs.</p></article>
+        <article class="gate"><div class="diamond"></div><strong>Start research</strong></article>
+        <article class="step"><span class="eyebrow">03 · Discover</span><h3>Collect evidence</h3><p>YouTube, Apify, and Firecrawl results become normalized evidence.</p></article>
+        <article class="step"><span class="eyebrow">04 · Decide</span><h3>Rank ideas</h3><p>Opportunity, fit, evidence, and originality create a transparent shortlist.</p></article>
+        <article class="gate"><div class="diamond"></div><strong>Select idea</strong></article>
+        <article class="step"><span class="eyebrow">05 · Create</span><h3>Build package</h3><p>Titles, thumbnail concepts, hooks, outline, script, and supporting evidence.</p></article>
+        <article class="gate"><div class="diamond"></div><strong>Approve export</strong></article>
+      </div>
+      <div class="journey-note">
+        <article class="note" style="--accent:var(--violet)"><h3>Voice is the default, not the only path</h3><p>Text composer, editable transcripts, keyboard controls, captions, and visible state keep the system accessible and precise.</p></article>
+        <article class="note" style="--accent:var(--green)"><h3>Approval means a specific version</h3><p>Any later edit produces a new artifact version and requires reapproval. The audit record identifies who approved what and when.</p></article>
+        <article class="note" style="--accent:var(--red)"><h3>No autonomous publishing in MVP</h3><p>The first version ends at export or copy. A later publishing integration requires a separate explicit confirmation and scoped OAuth permission.</p></article>
+      </div>
+
+      <header class="section-head" style="margin-top:34px"><div><div class="kicker">Voice-native interface</div><h2>The conversation is the control plane</h2></div><p>The dashboard keeps speech, evidence, editable artifacts, and approvals visible at the same time.</p></header>
+      <div class="cockpit">
+        <article class="panel"><div class="panel-head"><span>Conversation</span><span>Live</span></div><div class="chat-body"><div class="message">Find an underserved angle for a beginner video about AI automation.</div><div class="message agent">I can compare your channel with five selected competitors and supporting web research. Estimated use: 14 credits.</div><div class="mic-orb" aria-label="Microphone active">●</div><div class="mic-caption">Listening · click or press Space to stop</div></div></article>
+        <article class="panel"><div class="panel-head"><span>Working artifact</span><span>Package v3</span></div><div class="artifact"><strong>Opportunity</strong><span>“The first automation a non-technical owner should build”</span><div class="score">86 / 100 · strong evidence</div></div><div class="artifact"><strong>Title direction</strong><span>Stop Learning AI Tools. Build This One Automation First.</span></div><div class="artifact"><strong>Thumbnail concept</strong><span>One glowing workflow against a wall of crossed-out app icons.</span></div><div class="artifact"><strong>Hook</strong><span>“Most beginners collect AI tools. The useful ones connect one painful task from start to finish.”</span></div><div class="artifact"><strong>Outline + script</strong><span>Editable sections with inline source markers and regeneration controls.</span></div><div class="approval-bar">Ready for customer review</div></article>
+        <article class="panel"><div class="panel-head"><span>Evidence</span><span>7 sources</span></div><div class="evidence"><h3>Owned channel</h3><p>Relevant audience retention and topic history from authorised YouTube data.</p></div><div class="evidence"><h3>Competitor pattern</h3><p>Repeated beginner framing with high views but low implementation depth.</p></div><div class="evidence"><h3>Web signal</h3><p>Supporting demand language from articles and product pages.</p></div><div class="evidence"><h3>Why this score?</h3><p>Strong audience fit, clear evidence, moderate competition, differentiated promise.</p></div></article>
+      </div>
+      <div class="footer-mark">Voice data: no raw-audio retention by default · permanent API keys remain server-side</div>
+    </section>
+
+    <section class="page" aria-labelledby="loops-title">
+      <header class="section-head"><div><div class="kicker">Operating model</div><h2 id="loops-title">Two loops. Different jobs.</h2></div><p>The analysis loop serves customers. Loop engineering serves the repository. Neither removes human judgment.</p></header>
+      <div class="two-loops">
+        <article class="loop"><div class="loop-title product"><div class="eyebrow">Runtime</div><h2>Product intelligence loop</h2><p>Runs when a customer asks the SaaS to create work.</p></div><div class="loop-flow"><div class="loop-node" style="--accent:var(--violet)">Listen</div><div class="loop-node" style="--accent:var(--cyan)">Research</div><div class="loop-node" style="--accent:var(--amber)">Generate</div><div class="loop-node" style="--accent:var(--amber)">Validate</div><div class="loop-node" style="--accent:var(--green)">Approve</div></div></article>
+        <article class="loop"><div class="loop-title dev"><div class="eyebrow">Repository</div><h2>Loop engineering</h2><p>Runs when coding agents change the product.</p></div><div class="loop-flow"><div class="loop-node" style="--accent:var(--blue)">Issue + plan</div><div class="loop-node" style="--accent:var(--blue)">Branch</div><div class="loop-node" style="--accent:var(--blue)">Implement</div><div class="loop-node" style="--accent:var(--blue)">Checks + review</div><div class="loop-node" style="--accent:var(--green)">Human merge</div></div></article>
+      </div>
+      <div class="boundary"><strong>Hard boundary:</strong> agents do not autonomously publish content, expose credentials, alter billing, destroy production data, or merge their own pull requests.</div>
+
+      <table class="matrix" aria-label="Technology responsibility matrix">
+        <thead><tr><th>Concern</th><th>Chosen role</th><th>What it does not do</th><th>Control that matters</th></tr></thead>
+        <tbody>
+          <tr><td>Next.js</td><td>Experience, server endpoints, and initial orchestration shell</td><td>Does not hold long HTTP requests open for scraping</td><td>Server-only provider clients and explicit module boundaries</td></tr>
+          <tr><td>Supabase</td><td>Auth, Postgres, RLS, Storage, Realtime</td><td>Does not automatically create safe tenant policies</td><td>RLS tests for every customer-owned table</td></tr>
+          <tr><td>OpenAI voice</td><td>Realtime spoken agent and live transcript</td><td>Does not receive permanent API keys in the browser</td><td>Short-lived session, configurable models, usage meter</td></tr>
+          <tr><td>YouTube APIs</td><td>Authoritative data for the connected owned channel</td><td>Does not provide unlimited quota or every public transcript</td><td>Incremental OAuth, quota monitoring, compliance planning</td></tr>
+          <tr><td>Apify</td><td>Permitted public competitor collection</td><td>Does not become the source of truth for owned analytics</td><td>Async runs, webhook verification, normalized schemas</td></tr>
+          <tr><td>Firecrawl</td><td>Supporting web research beyond YouTube</td><td>Does not duplicate the YouTube collector by default</td><td>Domain allow/deny rules, provenance, retention</td></tr>
+          <tr><td>AI pipeline</td><td>Patterns, ideas, scoring, packages, validation</td><td>Does not approve its own consequential output</td><td>Prompt/model versions, evidence links, evals, approvals</td></tr>
+          <tr><td>Loop engineering</td><td>Agent-readable development and PR workflow</td><td>Is not the production backend</td><td>AGENTS.md, skills, checks, iteration caps, human merge</td></tr>
+        </tbody>
+      </table>
+
+      <div class="source-strip">
+        <p><strong>OpenAI Realtime API</strong> · platform.openai.com/docs/api-reference/realtime</p>
+        <p><strong>OpenAI Audio API</strong> · platform.openai.com/docs/api-reference/audio</p>
+        <p><strong>OpenAI voice intelligence</strong> · openai.com/index/advancing-voice-intelligence-with-new-models-in-the-api</p>
+        <p><strong>OpenAI GPT-Live</strong> · openai.com/index/introducing-gpt-live</p>
+        <p><strong>Supabase Auth</strong> · supabase.com/docs/guides/auth</p>
+        <p><strong>YouTube OAuth + quota</strong> · developers.google.com/youtube/v3/guides</p>
+        <p><strong>Apify Actors</strong> · docs.apify.com/actors</p>
+        <p><strong>Firecrawl</strong> · docs.firecrawl.dev/introduction</p>
+        <p><strong>Loop engineering</strong> · addyosmani.com/blog/loop-engineering</p>
+      </div>
+      <div class="footer-mark">Logical architecture is final · database schema and repository blueprint are the next design layer</div>
+    </section>
+  </main>
+</body>
+</html>
+

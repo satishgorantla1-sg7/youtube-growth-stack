@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ship Feature"
+  short_description: "Deliver a safe vertical product slice"
+  default_prompt: "Use $ship-feature to deliver this feature through the repository loop."

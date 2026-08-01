@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Pull Request"
+  short_description: "Run the complete PR quality gate"
+  default_prompt: "Use $verify-pr to validate this branch before review."

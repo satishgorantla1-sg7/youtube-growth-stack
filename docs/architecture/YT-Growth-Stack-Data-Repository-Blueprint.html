@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YT Growth Stack - Data and Repository Blueprint</title>
+  <style>
+    :root {
+      --paper: #f4f1e9;
+      --white: #fffefa;
+      --ink: #17181c;
+      --muted: #64636b;
+      --line: #c8c2b6;
+      --blue: #1769e0;
+      --blue-soft: #e5efff;
+      --violet: #6d4aff;
+      --violet-soft: #ebe7ff;
+      --cyan: #007f91;
+      --cyan-soft: #dff5f6;
+      --amber: #9a5900;
+      --amber-soft: #ffedc4;
+      --green: #157347;
+      --green-soft: #dff3e7;
+      --red: #b42318;
+      --red-soft: #ffe4e0;
+      --slate: #3d4657;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: #25252a; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #25252a;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.35;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1, h2 { font-family: Georgia, "Times New Roman", serif; letter-spacing: -.035em; }
+    h1 { max-width: 1050px; margin-bottom: 12px; font-size: 76px; line-height: .92; }
+    h2 { margin-bottom: 8px; font-size: 42px; line-height: 1; }
+    h3 { margin-bottom: 6px; font-size: 17px; line-height: 1.15; }
+    p { color: var(--muted); }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
+
+    .page {
+      width: min(1600px, 100vw);
+      min-height: 900px;
+      margin: 24px auto;
+      padding: 44px 52px 38px;
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(rgba(23,24,28,.032) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(23,24,28,.032) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      box-shadow: 0 18px 70px rgba(0,0,0,.32);
+    }
+    .kicker, .eyebrow, .num {
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      font-weight: 850;
+      font-size: 11px;
+    }
+    .masthead, .section-head {
+      display: grid;
+      grid-template-columns: 1.7fr .8fr;
+      gap: 38px;
+      align-items: end;
+      padding-bottom: 20px;
+      border-bottom: 3px solid var(--ink);
+    }
+    .subtitle { max-width: 900px; margin-bottom: 0; font-size: 18px; }
+    .meta { padding-left: 24px; border-left: 1px solid var(--line); }
+    .meta p { margin-bottom: 12px; font-size: 13px; }
+    .meta strong { color: var(--ink); }
+    .section-head p { margin-bottom: 0; font-size: 14px; }
+
+    .rule-strip {
+      display: grid;
+      grid-template-columns: 220px 1fr 270px;
+      margin: 24px 0 20px;
+      border: 1px solid var(--ink);
+      background: var(--white);
+    }
+    .rule-strip > div { padding: 15px 18px; border-right: 1px solid var(--ink); }
+    .rule-strip > div:last-child { border-right: 0; }
+    .rule-strip .lead { color: white; background: var(--blue); }
+    .rule-strip .formula { font-family: Georgia, serif; font-size: 22px; font-weight: 700; }
+    .rule-strip .guard { color: var(--green); background: var(--green-soft); font-weight: 800; }
+
+    .domain-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      border-top: 1px solid var(--ink);
+      border-left: 1px solid var(--ink);
+      background: var(--white);
+    }
+    .domain {
+      min-height: 440px;
+      padding: 17px 15px;
+      position: relative;
+      border-right: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+    }
+    .domain::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 6px; background: var(--accent); }
+    .domain .num { color: var(--accent); }
+    .domain h3 { margin-top: 20px; font-size: 21px; }
+    .domain > p { min-height: 55px; font-size: 12px; }
+    .table-list { margin-top: 13px; }
+    .table-row { padding: 8px 0; border-top: 1px solid var(--line); }
+    .table-row code { display: block; color: var(--ink); font-weight: 800; }
+    .table-row span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .identity { --accent: var(--blue); }
+    .connections { --accent: var(--cyan); }
+    .conversation { --accent: var(--violet); }
+    .research { --accent: #277f6b; }
+    .content { --accent: var(--amber); }
+    .operations { --accent: var(--slate); }
+
+    .relation-rail {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1fr 1.2fr;
+      margin-top: 17px;
+      color: white;
+      background: var(--ink);
+      border: 1px solid var(--ink);
+    }
+    .relation-rail div { padding: 14px 17px; border-right: 1px solid #555761; }
+    .relation-rail div:last-child { border-right: 0; }
+    .relation-rail strong { display: block; margin-bottom: 3px; }
+    .relation-rail span { color: #c8c8cf; font-size: 11px; }
+
+    .security-grid {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 20px;
+      margin-top: 25px;
+    }
+    .panel { border: 1px solid var(--ink); background: var(--white); }
+    .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 13px 16px; border-bottom: 1px solid var(--ink); }
+    .panel-head strong { font-size: 17px; }
+    .panel-body { padding: 17px; }
+
+    .request-flow { display: grid; grid-template-columns: 1fr 42px 1fr 42px 1fr; align-items: stretch; }
+    .flow-node { min-height: 135px; padding: 15px; border-top: 5px solid var(--accent); background: #f8f6f0; }
+    .flow-node p { margin-bottom: 0; font-size: 12px; }
+    .arrow { display: grid; place-items: center; font-size: 26px; font-weight: 900; }
+    .deny { margin-top: 14px; padding: 13px 15px; color: var(--red); background: var(--red-soft); border-left: 5px solid var(--red); font-weight: 800; }
+
+    .role-table { width: 100%; border-collapse: collapse; }
+    .role-table th, .role-table td { padding: 10px 11px; border: 1px solid var(--line); text-align: left; font-size: 11px; }
+    .role-table th { color: white; background: var(--ink); text-transform: uppercase; letter-spacing: .08em; }
+    .yes { color: var(--green); font-weight: 900; }
+    .limited { color: var(--amber); font-weight: 900; }
+    .no { color: var(--red); font-weight: 900; }
+
+    .storage-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 20px; }
+    .bucket { min-height: 150px; padding: 16px; border: 1px solid var(--ink); background: var(--white); }
+    .bucket .eyebrow { color: var(--cyan); }
+    .bucket p { margin-bottom: 0; font-size: 12px; }
+    .path { margin-top: 10px; padding: 7px 9px; background: #ece9e0; font-family: Consolas, monospace; font-size: 10px; }
+
+    .job-flow {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      margin-top: 20px;
+      border: 1px solid var(--ink);
+      background: var(--white);
+    }
+    .job-state { min-height: 95px; padding: 13px 9px; border-right: 1px solid var(--ink); border-top: 5px solid var(--accent); text-align: center; }
+    .job-state:last-child { border-right: 0; }
+    .job-state strong { display: block; margin-top: 17px; font-size: 12px; }
+
+    .repo-grid { display: grid; grid-template-columns: .88fr 1.12fr; gap: 20px; margin-top: 24px; }
+    .tree { padding: 17px 20px; color: #eef1f7; background: #20242d; border: 1px solid #20242d; font-family: Consolas, "SFMono-Regular", monospace; font-size: 12px; line-height: 1.55; white-space: pre; }
+    .tree .root { color: #8bb8ff; font-weight: 900; }
+    .tree .agent { color: #b9a7ff; }
+    .tree .data { color: #72dbc0; }
+    .tree .ci { color: #ffd37a; }
+
+    .instruction-chain { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--ink); background: var(--white); }
+    .instruction { min-height: 170px; padding: 15px; border-right: 1px solid var(--ink); border-top: 6px solid var(--accent); }
+    .instruction:last-child { border-right: 0; }
+    .instruction p { margin-bottom: 0; font-size: 11px; }
+    .instruction code { display: block; margin: 16px 0 8px; font-weight: 900; }
+
+    .skill-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 16px; }
+    .skill { display: grid; grid-template-columns: 190px 1fr; border: 1px solid var(--line); background: var(--white); }
+    .skill code { padding: 12px; color: var(--violet); border-right: 1px solid var(--line); font-weight: 900; }
+    .skill span { padding: 12px; color: var(--muted); font-size: 11px; }
+
+    .pr-flow { display: grid; grid-template-columns: repeat(10, 1fr); margin-top: 24px; border: 1px solid var(--ink); background: var(--white); }
+    .pr-step { min-height: 135px; padding: 14px 9px; position: relative; border-right: 1px solid var(--ink); border-top: 5px solid var(--accent); text-align: center; }
+    .pr-step:last-child { border-right: 0; }
+    .pr-step .num { color: var(--accent); }
+    .pr-step strong { display: block; margin-top: 26px; font-size: 12px; }
+
+    .phase-grid { display: grid; grid-template-columns: repeat(8, 1fr); margin-top: 22px; border: 1px solid var(--ink); background: var(--white); }
+    .phase { min-height: 178px; padding: 14px 12px; border-right: 1px solid var(--ink); }
+    .phase:last-child { border-right: 0; }
+    .phase .num { color: var(--blue); }
+    .phase h3 { margin-top: 22px; font-size: 15px; }
+    .phase p { font-size: 10px; }
+
+    .risk-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 21px; }
+    .risk { min-height: 138px; padding: 15px; border-top: 5px solid var(--red); background: var(--white); }
+    .risk p { margin-bottom: 0; font-size: 11px; }
+    .control { display: block; margin-top: 9px; color: var(--green); font-size: 10px; font-weight: 900; }
+
+    .source-note { margin-top: 18px; color: var(--muted); font-size: 10px; }
+    .footer-mark { position: absolute; right: 52px; bottom: 18px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-size: 9px; }
+
+    @media (max-width: 1000px) {
+      .page { width: 100%; min-height: auto; margin: 0; padding: 28px 20px; }
+      .masthead, .section-head, .security-grid, .repo-grid { grid-template-columns: 1fr; }
+      .domain-grid, .job-flow, .pr-flow, .phase-grid { grid-template-columns: 1fr; }
+      .storage-row, .relation-rail, .instruction-chain, .risk-grid { grid-template-columns: 1fr; }
+      .skill-grid { grid-template-columns: 1fr; }
+      .request-flow { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); }
+      .tree { overflow-x: auto; }
+    }
+
+    @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="page" aria-labelledby="data-title">
+      <header class="masthead">
+        <div>
+          <div class="kicker">Buildable blueprint · v1.0 · 01 August 2026</div>
+          <h1 id="data-title">State, Structure, Shipping</h1>
+          <p class="subtitle">The exact data domains and repository boundaries that turn the approved YT Growth Stack architecture into safe, reviewable work.</p>
+        </div>
+        <div class="meta">
+          <p><strong>Database</strong><br />Supabase Postgres + Auth + Storage + Realtime</p>
+          <p><strong>Repository</strong><br />Modular pnpm workspace with one Next.js application</p>
+          <p><strong>Operating rule</strong><br />Tenant data is explicit. Provider internals stay server-only.</p>
+        </div>
+      </header>
+
+      <div class="rule-strip">
+        <div class="lead"><span class="eyebrow">Security anchor</span><br /><strong>Workspace is the boundary</strong></div>
+        <div class="formula">auth user -> membership -> workspace -> every customer-owned record</div>
+        <div class="guard">No workspace membership = no row, file, event, or realtime channel</div>
+      </div>
+
+      <div class="domain-grid" aria-label="Supabase data domains">
+        <article class="domain identity"><span class="num">Domain 01</span><h3>Identity</h3><p>Who the customer is and which workspace roles they hold.</p><div class="table-list"><div class="table-row"><code>profiles</code><span>product user linked to auth.users</span></div><div class="table-row"><code>workspaces</code><span>tenant and plan owner</span></div><div class="table-row"><code>workspace_members</code><span>owner, admin, editor, viewer</span></div><div class="table-row"><code>workspace_settings</code><span>retention, voice, brand, locale</span></div></div></article>
+        <article class="domain connections"><span class="num">Domain 02</span><h3>Connections</h3><p>Owned and competitor channels plus protected provider access.</p><div class="table-list"><div class="table-row"><code>provider_connections</code><span>status, scopes, expiry metadata</span></div><div class="table-row"><code>provider_secrets</code><span>private encrypted secret reference</span></div><div class="table-row"><code>channels</code><span>owned or competitor channel</span></div><div class="table-row"><code>channel_snapshots</code><span>channel metrics over time</span></div><div class="table-row"><code>videos</code><span>normalized video metadata</span></div><div class="table-row"><code>video_snapshots</code><span>video metrics over time</span></div></div></article>
+        <article class="domain conversation"><span class="num">Domain 03</span><h3>Conversation</h3><p>Voice and chat form one durable, reviewable customer thread.</p><div class="table-list"><div class="table-row"><code>conversations</code><span>agent work thread</span></div><div class="table-row"><code>messages</code><span>user, agent, tool, system</span></div><div class="table-row"><code>voice_sessions</code><span>model, duration, latency, usage</span></div><div class="table-row"><code>transcripts</code><span>editable versioned voice text</span></div></div></article>
+        <article class="domain research"><span class="num">Domain 04</span><h3>Research</h3><p>Durable jobs collect and normalize traceable evidence.</p><div class="table-list"><div class="table-row"><code>research_projects</code><span>request and approved scope</span></div><div class="table-row"><code>research_targets</code><span>channel, niche, keyword, URL</span></div><div class="table-row"><code>jobs + job_events</code><span>state and progress history</span></div><div class="table-row"><code>provider_runs</code><span>one external invocation</span></div><div class="table-row"><code>source_documents</code><span>normalized source object</span></div><div class="table-row"><code>evidence_items</code><span>claim-bearing source fragment</span></div></div></article>
+        <article class="domain content"><span class="num">Domain 05</span><h3>Content</h3><p>Ideas become versioned, approved creative artifacts.</p><div class="table-list"><div class="table-row"><code>ideas + idea_scores</code><span>candidate and scoring versions</span></div><div class="table-row"><code>content_packages</code><span>selected idea workspace</span></div><div class="table-row"><code>artifacts</code><span>title, thumbnail, hook, outline, script</span></div><div class="table-row"><code>artifact_versions</code><span>immutable generated or edited version</span></div><div class="table-row"><code>approval_requests</code><span>pending human decision</span></div><div class="table-row"><code>approval_events</code><span>append-only decision history</span></div></div></article>
+        <article class="domain operations"><span class="num">Domain 06</span><h3>Operations</h3><p>Models, costs, billing, callbacks, and audits stay accountable.</p><div class="table-list"><div class="table-row"><code>prompt_versions</code><span>prompt and output schema version</span></div><div class="table-row"><code>model_runs</code><span>model, tokens, latency, cost</span></div><div class="table-row"><code>usage_events</code><span>append-only metering ledger</span></div><div class="table-row"><code>subscriptions</code><span>billing provider mirror</span></div><div class="table-row"><code>webhook_receipts</code><span>private deduplication inbox</span></div><div class="table-row"><code>audit_events</code><span>security and mutation trail</span></div></div></article>
+      </div>
+
+      <div class="relation-rail">
+        <div><strong>One workspace</strong><span>owns channels, conversations, research, content, usage, and approvals</span></div>
+        <div><strong>One job</strong><span>has many events and provider runs; state is durable in Postgres</span></div>
+        <div><strong>One source</strong><span>has many evidence items; every claim keeps provenance</span></div>
+        <div><strong>One artifact</strong><span>has immutable versions; approval names the exact version reviewed</span></div>
+      </div>
+      <div class="footer-mark">Blueprint 01 / 04 · Supabase domain atlas</div>
+    </section>
+
+    <section class="page" aria-labelledby="security-title">
+      <header class="section-head">
+        <div><div class="kicker">Supabase control plane</div><h2 id="security-title">Security is enforced where the data lives</h2></div>
+        <p>Server checks improve the experience; Postgres RLS remains the final tenant boundary. Credentials and webhook internals do not enter the browser-facing schema.</p>
+      </header>
+
+      <div class="security-grid">
+        <article class="panel">
+          <div class="panel-head"><strong>Request authorization path</strong><span class="eyebrow">Every tenant query</span></div>
+          <div class="panel-body">
+            <div class="request-flow">
+              <div class="flow-node" style="--accent:var(--violet)"><span class="eyebrow">01</span><h3>Authenticated user</h3><p>Supabase session provides <code>auth.uid()</code>.</p></div>
+              <div class="arrow">></div>
+              <div class="flow-node" style="--accent:var(--blue)"><span class="eyebrow">02</span><h3>Membership check</h3><p>Indexed helper confirms workspace and allowed role.</p></div>
+              <div class="arrow">></div>
+              <div class="flow-node" style="--accent:var(--green)"><span class="eyebrow">03</span><h3>Row or private channel</h3><p>Policy permits only the matching workspace boundary.</p></div>
+            </div>
+            <div class="deny">Outsider, anonymous caller, guessed UUID, or changed workspace ID: denied.</div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><strong>Role matrix</strong><span class="eyebrow">MVP</span></div>
+          <div class="panel-body">
+            <table class="role-table">
+              <thead><tr><th>Action</th><th>Owner</th><th>Admin</th><th>Editor</th><th>Viewer</th></tr></thead>
+              <tbody>
+                <tr><td>Read workspace content</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+                <tr><td>Create research/content</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+                <tr><td>Approve content</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+                <tr><td>Manage connections</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+                <tr><td>Manage members</td><td class="yes">Yes</td><td class="limited">Limited</td><td class="no">No</td><td class="no">No</td></tr>
+                <tr><td>Billing / delete workspace</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+
+      <div class="storage-row" aria-label="Private Storage buckets">
+        <article class="bucket"><span class="eyebrow">Private bucket 01</span><h3>raw-research</h3><p>Raw Apify, Firecrawl, YouTube, and model exports. Service jobs write; support tooling reads.</p><div class="path">workspace/project/provider/object</div></article>
+        <article class="bucket"><span class="eyebrow">Private bucket 02</span><h3>workspace-assets</h3><p>Customer uploads, approved reference images, and thumbnail assets. Editors write; members read.</p><div class="path">workspace/project/assets/object</div></article>
+        <article class="bucket"><span class="eyebrow">Private bucket 03</span><h3>exports</h3><p>Generated briefs, scripts, and package exports. Members receive time-limited signed URLs.</p><div class="path">workspace/package/version/export</div></article>
+      </div>
+
+      <div class="panel" style="margin-top:20px">
+        <div class="panel-head"><strong>Durable job state</strong><span class="eyebrow">Realtime improves UX; Postgres is truth</span></div>
+        <div class="job-flow">
+          <div class="job-state" style="--accent:var(--slate)"><span class="num">01</span><strong>queued</strong></div>
+          <div class="job-state" style="--accent:var(--cyan)"><span class="num">02</span><strong>collecting</strong></div>
+          <div class="job-state" style="--accent:var(--cyan)"><span class="num">03</span><strong>normalizing</strong></div>
+          <div class="job-state" style="--accent:var(--amber)"><span class="num">04</span><strong>analysing</strong></div>
+          <div class="job-state" style="--accent:var(--green)"><span class="num">05</span><strong>awaiting approval</strong></div>
+          <div class="job-state" style="--accent:var(--amber)"><span class="num">06</span><strong>generating</strong></div>
+          <div class="job-state" style="--accent:var(--amber)"><span class="num">07</span><strong>validating</strong></div>
+          <div class="job-state" style="--accent:var(--green)"><span class="num">08</span><strong>completed</strong></div>
+        </div>
+      </div>
+
+      <p class="source-note"><strong>Verification:</strong> pgTAP tests every RLS policy with owner, editor, viewer, outsider, anonymous, and service contexts. Provider callback fixtures are replayed twice to prove idempotency. Database and Storage recovery are tested separately.</p>
+      <div class="footer-mark">Blueprint 02 / 04 · RLS, Storage, Realtime, and jobs</div>
+    </section>
+
+    <section class="page" aria-labelledby="repo-title">
+      <header class="section-head">
+        <div><div class="kicker">Agent-readable repository</div><h2 id="repo-title">Put context where the work happens</h2></div>
+        <p>A small root contract applies everywhere. Narrower instruction files and focused skills appear only where database, web, or provider work has different safety rules.</p>
+      </header>
+
+      <div class="repo-grid">
+        <article class="tree" aria-label="Repository folder tree"><span class="root">YT Growth Stack/</span>
+|-- <span class="agent">AGENTS.md</span>
+|-- README.md
+|-- package.json
+|-- pnpm-workspace.yaml
+|-- turbo.json
+|-- .env.example
+|-- <span class="agent">.agents/skills/</span>
+|   |-- add-feature-slice/
+|   |-- add-supabase-migration/
+|   |-- add-provider-adapter/
+|   |-- change-ai-prompt/
+|   |-- diagnose-job-failure/
+|   |-- prepare-pull-request/
+|   `-- update-architecture/
+|-- <span class="ci">.github/</span>
+|   |-- ISSUE_TEMPLATE/
+|   |-- pull_request_template.md
+|   |-- CODEOWNERS
+|   `-- workflows/
+|-- apps/web/
+|   |-- <span class="agent">AGENTS.md</span>
+|   `-- src/
+|       |-- app/
+|       |-- components/
+|       |-- features/
+|       `-- server/
+|           |-- workflows/
+|           |-- integrations/<span class="agent">AGENTS.md</span>
+|           |-- security/
+|           `-- observability/
+|-- packages/
+|   |-- contracts/
+|   |-- database/
+|   |-- design-system/
+|   |-- test-utils/
+|   `-- typescript-config/
+|-- <span class="data">supabase/</span>
+|   |-- <span class="agent">AGENTS.md</span>
+|   |-- migrations/
+|   |-- seed.sql
+|   `-- tests/database/
+|-- tests/{contract,integration,e2e}/
+|-- docs/{architecture,decisions,runbooks,product}/
+`-- scripts/{verify,check-migrations,check-env}.mjs</article>
+
+        <div>
+          <div class="instruction-chain" aria-label="AGENTS.md instruction hierarchy">
+            <article class="instruction" style="--accent:var(--ink)"><span class="num">Root</span><code>/AGENTS.md</code><p>Product boundary, commands, tenant safety, jobs, approvals, definition of done, review rules.</p></article>
+            <article class="instruction" style="--accent:var(--violet)"><span class="num">Web</span><code>apps/web/AGENTS.md</code><p>Server/client boundaries, voice-text parity, feature slices, UI states, design tokens.</p></article>
+            <article class="instruction" style="--accent:var(--cyan)"><span class="num">Providers</span><code>integrations/AGENTS.md</code><p>Adapter contract, retry, timeout, webhook auth, redaction, normalization, fixtures.</p></article>
+            <article class="instruction" style="--accent:var(--green)"><span class="num">Database</span><code>supabase/AGENTS.md</code><p>Forward migrations, RLS in same change, indexes, pgTAP, rollout and rollback.</p></article>
+          </div>
+
+          <div class="panel" style="margin-top:17px">
+            <div class="panel-head"><strong>Focused repository skills</strong><span class="eyebrow">.agents/skills</span></div>
+            <div class="panel-body">
+              <div class="skill-grid">
+                <div class="skill"><code>add-feature-slice</code><span>Ship one capability with UI, server logic, contracts, states, tests, and docs.</span></div>
+                <div class="skill"><code>add-supabase-migration</code><span>Produce migration, indexes, types, pgTAP tests, rollout and rollback notes.</span></div>
+                <div class="skill"><code>add-provider-adapter</code><span>Normalize a provider behind fixtures, timeout, retry, idempotency, and redaction.</span></div>
+                <div class="skill"><code>change-ai-prompt</code><span>Version prompts and schemas, add eval cases, and state behavior and cost impact.</span></div>
+                <div class="skill"><code>diagnose-job-failure</code><span>Build a timeline, root cause, affected set, safe retry path, and prevention test.</span></div>
+                <div class="skill"><code>prepare-pull-request</code><span>Collect checks, screenshots, migrations, risks, rollout, and rollback evidence.</span></div>
+                <div class="skill"><code>update-architecture</code><span>Refresh diagrams, decisions, guidance, skills, and official-source evidence.</span></div>
+                <div class="skill"><code>skill contract</code><span>One recognizable job, clear trigger, explicit input/output, narrow stop conditions.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="source-note"><strong>Codex behavior:</strong> repository skills are discovered from <code>.agents/skills</code>. Root-to-working-directory AGENTS.md guidance is combined, and closer instructions take precedence. Keep the total instruction chain concise.</p>
+      <div class="footer-mark">Blueprint 03 / 04 · folders, instructions, and skills</div>
+    </section>
+
+    <section class="page" aria-labelledby="shipping-title">
+      <header class="section-head">
+        <div><div class="kicker">Loop engineering in practice</div><h2 id="shipping-title">Small pull requests. Hard checks. Human merge.</h2></div>
+        <p>The loop gives coding agents a repeatable route, but CI supplies deterministic evidence and a human remains accountable for approval and release.</p>
+      </header>
+
+      <div class="pr-flow" aria-label="Pull request workflow">
+        <div class="pr-step" style="--accent:var(--slate)"><span class="num">01</span><strong>Small issue</strong></div>
+        <div class="pr-step" style="--accent:var(--violet)"><span class="num">02</span><strong>Read guidance + skill</strong></div>
+        <div class="pr-step" style="--accent:var(--blue)"><span class="num">03</span><strong>Plan acceptance</strong></div>
+        <div class="pr-step" style="--accent:var(--blue)"><span class="num">04</span><strong>Branch</strong></div>
+        <div class="pr-step" style="--accent:var(--amber)"><span class="num">05</span><strong>Implement</strong></div>
+        <div class="pr-step" style="--accent:var(--amber)"><span class="num">06</span><strong>Local checks</strong></div>
+        <div class="pr-step" style="--accent:var(--cyan)"><span class="num">07</span><strong>Open PR + preview</strong></div>
+        <div class="pr-step" style="--accent:var(--cyan)"><span class="num">08</span><strong>CI + Codex review</strong></div>
+        <div class="pr-step" style="--accent:var(--green)"><span class="num">09</span><strong>Human approval</strong></div>
+        <div class="pr-step" style="--accent:var(--green)"><span class="num">10</span><strong>Merge + observe</strong></div>
+      </div>
+
+      <div class="phase-grid" aria-label="Implementation phases">
+        <article class="phase"><span class="num">Phase 0</span><h3>Foundation</h3><p>Git, pnpm, Next.js, local Supabase, CI, AGENTS.md, skills, decisions.</p></article>
+        <article class="phase"><span class="num">Phase 1</span><h3>SaaS shell</h3><p>Auth, workspaces, roles, RLS tests, private buckets, usage ledger.</p></article>
+        <article class="phase"><span class="num">Phase 2</span><h3>Voice cockpit</h3><p>Realtime speech, transcript review, text fallback, messages, metering.</p></article>
+        <article class="phase"><span class="num">Phase 3</span><h3>Owned channel</h3><p>OAuth, encrypted refresh token, sync, metrics, quota, deletion.</p></article>
+        <article class="phase"><span class="num">Phase 4</span><h3>Research</h3><p>Jobs, Apify, Firecrawl, webhooks, evidence, retries, cancellation.</p></article>
+        <article class="phase"><span class="num">Phase 5</span><h3>Ideas</h3><p>Patterns, candidates, scoring, evidence explanations, approval.</p></article>
+        <article class="phase"><span class="num">Phase 6</span><h3>Packages</h3><p>Titles, thumbnails, hooks, outline, script, versions, validation, export.</p></article>
+        <article class="phase"><span class="num">Phase 7</span><h3>Hardening</h3><p>Billing, limits, admin, monitoring, retention, recovery, audit readiness.</p></article>
+      </div>
+
+      <div class="risk-grid" aria-label="Key risk controls">
+        <article class="risk"><h3>Cross-tenant leak</h3><p>A guessed ID must never reveal another workspace.</p><span class="control">Control: RLS + negative pgTAP tests</span></article>
+        <article class="risk"><h3>Credential leak</h3><p>OAuth and service secrets must never reach client code or logs.</p><span class="control">Control: private schema + Vault + secret scan</span></article>
+        <article class="risk"><h3>Duplicate callbacks</h3><p>Apify or other providers may deliver the same event again.</p><span class="control">Control: unique receipt + idempotent handler</span></article>
+        <article class="risk"><h3>Runaway spend</h3><p>Voice, scraping, and model work can outpace customer value.</p><span class="control">Control: budgets + append-only usage ledger</span></article>
+        <article class="risk"><h3>Approval bypass</h3><p>Edited or regenerated output must not inherit an old approval.</p><span class="control">Control: immutable versions + state-machine tests</span></article>
+        <article class="risk"><h3>Lost progress</h3><p>Realtime disconnects must not erase the underlying workflow.</p><span class="control">Control: jobs/events are durable truth</span></article>
+        <article class="risk"><h3>Unsupported claims</h3><p>Generated recommendations must show why they were made.</p><span class="control">Control: evidence items + source evals</span></article>
+        <article class="risk"><h3>YouTube quota</h3><p>Public SaaS demand can exhaust project quota.</p><span class="control">Control: cache + accounting + backoff + alerts</span></article>
+        <article class="risk"><h3>Scraper drift</h3><p>External structures and provider behavior will change.</p><span class="control">Control: adapters + fixtures + partial results</span></article>
+        <article class="risk"><h3>Recovery gap</h3><p>Database backups alone do not contain Storage objects.</p><span class="control">Control: database + object recovery exercise</span></article>
+      </div>
+
+      <p class="source-note"><strong>CI contract:</strong> format, lint, TypeScript, build, unit tests, contract tests, migration validation, pgTAP RLS tests, Playwright critical paths, secret scan, security checks, preview evidence, human approval.</p>
+      <div class="footer-mark">Blueprint 04 / 04 · PR loop, phases, and risk controls</div>
+    </section>
+  </main>
+</body>
+</html>
+

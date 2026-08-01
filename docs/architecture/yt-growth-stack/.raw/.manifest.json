@@ -1,0 +1,18 @@
+{
+  "scaffold_history": [
+    {
+      "client": "yt-growth-stack",
+      "client_name": "YT Growth Stack",
+      "owner": "YT Growth Stack Team",
+      "created": "2026-08-01"
+    }
+  ],
+  "sources": [
+    {
+      "path": ".raw/sources/yt-growth-stack-architecture-brief.md",
+      "sha256": "6c468b331982c3fea332cdd49939c311b5d002f43e93d053234d5ac66dfe6a88",
+      "retrieved": "2026-08-01",
+      "source_type": "architecture-brief"
+    }
+  ]
+}

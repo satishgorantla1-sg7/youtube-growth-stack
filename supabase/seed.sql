@@ -1,0 +1,2 @@
+-- Intentionally empty. Create users through Supabase Auth, then seed workspace data
+-- through an authenticated setup route so RLS remains exercised in development.

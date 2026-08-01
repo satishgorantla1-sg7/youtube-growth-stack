@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Voice"
+  short_description: "Modify voice flows without regressions"
+  default_prompt: "Use $change-voice to make this voice experience change safely."

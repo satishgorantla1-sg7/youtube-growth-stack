@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit Safety"
+  short_description: "Review tenancy secrets cost and consent"
+  default_prompt: "Use $audit-safety to review this change for SaaS safety risks."

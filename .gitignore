@@ -1,0 +1,30 @@
+# dependencies and builds
+/node_modules
+/.next
+/out
+/build
+/coverage
+*.tsbuildinfo
+
+# local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# generated test and working artifacts
+/.playwright-cli
+/output
+/tmp
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.log
+.vercel
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# Supabase local state
+/supabase/.branches
+/supabase/.temp

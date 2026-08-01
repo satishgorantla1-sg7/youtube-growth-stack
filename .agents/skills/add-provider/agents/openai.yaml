@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Provider"
+  short_description: "Add a bounded external API adapter"
+  default_prompt: "Use $add-provider to add this integration behind the provider boundary."

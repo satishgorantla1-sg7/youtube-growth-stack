@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Database"
+  short_description: "Create safe Supabase schema changes"
+  default_prompt: "Use $change-database to implement and verify this schema change."

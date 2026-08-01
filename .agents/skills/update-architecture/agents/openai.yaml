@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update Architecture"
+  short_description: "Keep diagrams and decisions current"
+  default_prompt: "Use $update-architecture to update the architecture after this decision."

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "status": "domain-adapted",
+  "domain": "GOGH visual and evidence adapter for the YT Growth Stack voice-first SaaS architecture.",
+  "generic_only": false,
+  "raw_input_types": [
+    "Architecture source brief in Markdown",
+    "GOGH project design brief in JSON",
+    "Official provider documentation recorded in the source ledger"
+  ],
+  "input_schemas": [
+    ".raw/.manifest.json",
+    "references/source-ledger.json",
+    "../../sources/gogh-project-brief.json"
+  ],
+  "importers": ["GOGH scripts/ingest_source.py"],
+  "synthesis_modules": ["GOGH scripts/render_stack_advisor.py", "custom architecture synthesis"],
+  "report_renderers": [
+    "YT-Growth-Stack-Architecture.html",
+    "YT-Growth-Stack-Architecture.pdf",
+    "YT-Growth-Stack-Architecture.png"
+  ],
+  "quality_notes": [
+    "Visual direction is Conversational Systems Atlas.",
+    "GOGH dials: design variance 8, motion intensity 4, visual density 4, strict accessibility.",
+    "The architecture source remains immutable under .raw/sources after ingestion.",
+    "No credentials or private API keys are stored in the vault."
+  ]
+}
+
