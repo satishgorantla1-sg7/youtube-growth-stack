@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeNextPath, signInSchema, signUpSchema } from "./validation";
+import { passwordResetRequestSchema, safeNextPath, signInSchema, signUpSchema, updatePasswordSchema } from "./validation";
 
 describe("auth validation", () => {
   it("accepts valid sign-up details", () => {
@@ -27,6 +27,18 @@ describe("auth validation", () => {
       email: "creator@example.com",
       password: "long-enough",
     }).success).toBe(false);
+  });
+});
+
+describe("password recovery validation", () => {
+  it("accepts a valid recovery email", () => {
+    expect(passwordResetRequestSchema.safeParse({ email: "creator@example.com" }).success).toBe(true);
+  });
+
+  it("requires matching strong-enough passwords", () => {
+    expect(updatePasswordSchema.safeParse({ password: "new secure password", confirmPassword: "new secure password" }).success).toBe(true);
+    expect(updatePasswordSchema.safeParse({ password: "new secure password", confirmPassword: "different password" }).success).toBe(false);
+    expect(updatePasswordSchema.safeParse({ password: "short", confirmPassword: "short" }).success).toBe(false);
   });
 });
 

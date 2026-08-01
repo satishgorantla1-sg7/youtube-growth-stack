@@ -66,6 +66,7 @@ export function AuthForm({ action, mode, next, initialError, defaults }: Props) 
           <Link href={signingUp ? "/auth/sign-in" : "/auth/sign-up"}>{signingUp ? "Sign in" : "Create one"}</Link>
         </p>
       ) : null}
+      {mode === "sign-in" ? <p className="auth-switch"><Link href="/auth/forgot-password">Forgot your password?</Link></p> : null}
     </form>
   );
 }
