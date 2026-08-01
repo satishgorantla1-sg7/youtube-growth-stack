@@ -7,6 +7,8 @@ alter table public.research_runs
   add constraint research_runs_workspace_id_unique unique (workspace_id, id);
 alter table public.jobs
   add constraint jobs_workspace_id_unique unique (workspace_id, id);
+alter table public.jobs
+  add constraint jobs_workspace_run_id_unique unique (workspace_id, research_run_id, id);
 alter table public.research_sources
   add constraint research_sources_workspace_run_fk
   foreign key (workspace_id, research_run_id)
@@ -27,6 +29,10 @@ alter table public.research_runs
   add column cancellation_requested_at timestamptz,
   add column cancellation_requested_by uuid references public.profiles(id),
   add column cancellation_reason text check (cancellation_reason is null or char_length(cancellation_reason) <= 500);
+alter table public.research_runs
+  add constraint research_runs_cancellation_actor_workspace_fk
+  foreign key (workspace_id, cancellation_requested_by)
+  references public.workspace_members(workspace_id, user_id);
 
 alter table public.jobs drop constraint jobs_state_check;
 alter table public.jobs add constraint jobs_state_check
@@ -63,6 +69,35 @@ create table public.research_credit_reservations (
   )
 );
 
+-- Reject sensitive logging keys at any nesting depth. Provider metadata is
+-- operational telemetry only; prompts, content, credentials, and transcripts
+-- must never be persisted through this ledger.
+create or replace function app_private.jsonb_has_sensitive_key(document jsonb)
+returns boolean language plpgsql immutable set search_path = '' as $$
+declare
+  entry record;
+  item jsonb;
+begin
+  if document is null then return false; end if;
+  if pg_catalog.jsonb_typeof(document) = 'object' then
+    for entry in select key, value from pg_catalog.jsonb_each(document)
+    loop
+      if pg_catalog.lower(entry.key) = any(array[
+        'prompt','content','token','api_key','authorization','transcript'
+      ]) or app_private.jsonb_has_sensitive_key(entry.value) then
+        return true;
+      end if;
+    end loop;
+  elsif pg_catalog.jsonb_typeof(document) = 'array' then
+    for item in select value from pg_catalog.jsonb_array_elements(document)
+    loop
+      if app_private.jsonb_has_sensitive_key(item) then return true; end if;
+    end loop;
+  end if;
+  return false;
+end;
+$$;
+
 create table public.provider_invocations (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
@@ -85,13 +120,13 @@ create table public.provider_invocations (
   unique (workspace_id, idempotency_key),
   foreign key (workspace_id, research_run_id)
     references public.research_runs(workspace_id, id) on delete cascade,
-  foreign key (workspace_id, job_id)
-    references public.jobs(workspace_id, id) on delete cascade,
+  foreign key (workspace_id, research_run_id, job_id)
+    references public.jobs(workspace_id, research_run_id, id) on delete cascade,
   check (
     (state = 'started' and completed_at is null)
     or (state <> 'started' and completed_at is not null)
   ),
-  check (not (metadata ?| array['prompt','content','token','api_key','authorization','transcript']))
+  check (not app_private.jsonb_has_sensitive_key(metadata))
 );
 
 -- Operational controls and counters are intentionally private. Tenant members
@@ -201,7 +236,15 @@ begin
   select requests_per_minute into workspace_limit
   from app_private.research_safety_limits
   where scope = 'workspace' and workspace_id = target_workspace_id;
+  global_limit := coalesce(global_limit, 120);
   workspace_limit := coalesce(workspace_limit, least(global_limit, 30));
+
+  insert into app_private.research_rate_limit_counters(scope_key, window_started_at, request_count)
+  values ('research-request:global', current_window, 1)
+  on conflict (scope_key, window_started_at) do update
+  set request_count = app_private.research_rate_limit_counters.request_count + 1
+  returning request_count into current_count;
+  if current_count > global_limit then raise exception 'global_rate_limit_exceeded'; end if;
 
   insert into app_private.research_rate_limit_counters(scope_key, window_started_at, request_count)
   values ('workspace:' || target_workspace_id::text, current_window, 1)
@@ -216,6 +259,51 @@ begin
   set request_count = app_private.research_rate_limit_counters.request_count + 1
   returning request_count into current_count;
   if current_count > least(workspace_limit, 10) then raise exception 'user_rate_limit_exceeded'; end if;
+end;
+$$;
+
+create or replace function app_private.consume_provider_rate_limit(
+  target_workspace_id uuid, target_provider text
+) returns void language plpgsql security definer set search_path = '' as $$
+declare
+  current_window timestamptz := date_trunc('minute', now());
+  global_limit integer;
+  provider_limit integer;
+  workspace_limit integer;
+  current_count integer;
+begin
+  select requests_per_minute into global_limit
+  from app_private.research_safety_limits where scope = 'global';
+  select requests_per_minute into provider_limit
+  from app_private.research_safety_limits
+  where scope = 'provider' and provider = target_provider;
+  select requests_per_minute into workspace_limit
+  from app_private.research_safety_limits
+  where scope = 'workspace' and workspace_id = target_workspace_id;
+  global_limit := coalesce(global_limit, 120);
+  provider_limit := coalesce(provider_limit, least(global_limit, 60));
+  workspace_limit := coalesce(workspace_limit, least(provider_limit, 30));
+
+  insert into app_private.research_rate_limit_counters(scope_key, window_started_at, request_count)
+  values ('provider-call:global', current_window, 1)
+  on conflict (scope_key, window_started_at) do update
+  set request_count = app_private.research_rate_limit_counters.request_count + 1
+  returning request_count into current_count;
+  if current_count > global_limit then raise exception 'global_provider_rate_limit_exceeded'; end if;
+
+  insert into app_private.research_rate_limit_counters(scope_key, window_started_at, request_count)
+  values ('provider-call:' || target_provider, current_window, 1)
+  on conflict (scope_key, window_started_at) do update
+  set request_count = app_private.research_rate_limit_counters.request_count + 1
+  returning request_count into current_count;
+  if current_count > provider_limit then raise exception 'provider_rate_limit_exceeded'; end if;
+
+  insert into app_private.research_rate_limit_counters(scope_key, window_started_at, request_count)
+  values ('provider-call:' || target_workspace_id::text, current_window, 1)
+  on conflict (scope_key, window_started_at) do update
+  set request_count = app_private.research_rate_limit_counters.request_count + 1
+  returning request_count into current_count;
+  if current_count > workspace_limit then raise exception 'workspace_provider_rate_limit_exceeded'; end if;
 end;
 $$;
 
@@ -340,6 +428,10 @@ begin
     update public.research_credit_reservations set state = 'released', settled_at = now(),
       actual_credits = 0, release_reason = 'cancelled_before_provider_start'
       where research_run_id = target_run.id and state = 'reserved';
+    insert into public.job_events(workspace_id, job_id, correlation_id, event_type, attempt, metadata)
+    values (target_job.workspace_id, target_job.id, target_job.correlation_id,
+      'budget_released', target_job.attempts,
+      jsonb_build_object('reason', 'cancelled_before_provider_start'));
   end if;
   insert into public.job_events(workspace_id, job_id, correlation_id, event_type, attempt, metadata)
   values (target_job.workspace_id, target_job.id, target_job.correlation_id,
@@ -356,25 +448,99 @@ $$;
 
 create or replace function public.lease_research_job(worker_id text, lease_seconds integer default 60)
 returns jsonb language plpgsql security definer set search_path = '' as $$
-declare leased_job public.jobs; expired_job public.jobs; workspace_cap integer; active_workspace integer;
+declare
+  leased_job public.jobs;
+  expired_job public.jobs;
+  reservation public.research_credit_reservations;
+  incurred_credits integer;
+  reconciled_credits integer;
+  had_uncertain_invocation boolean;
+  terminal_job_state text;
+  terminal_run_state text;
+  terminal_event text;
 begin
   if auth.role() <> 'service_role' then raise exception 'service_role_required'; end if;
   if char_length(worker_id) not between 1 and 128 or lease_seconds not between 15 and 300 then raise exception 'invalid_lease_request'; end if;
+  -- Serialize count plus transition. Row locks alone do not prevent workers
+  -- choosing different queued rows in one workspace from exceeding the cap.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('research-job-lease:global', 0)
+  );
+
+  -- Close orphaned provider attempts for every expired lease. Terminal work
+  -- reconciles completed charges; indeterminate calls retain the estimate.
   for expired_job in
-    select * from public.jobs where kind = 'research.collect' and state = 'leased'
-      and lease_expires_at < now() and attempts >= max_attempts
+    select * from public.jobs where kind = 'research.collect'
+      and state in ('leased','cancelling') and lease_expires_at < now()
     order by lease_expires_at for update skip locked limit 25
   loop
-    update public.jobs set state = 'dead_letter', last_error = 'lease_expired_at_max_attempts',
-      lease_token = null, lease_expires_at = null, leased_by = null where id = expired_job.id;
-    update public.research_runs set state = 'failed', error_code = 'lease_expired_at_max_attempts', completed_at = now()
-      where id = expired_job.research_run_id;
-    update public.research_credit_reservations set state = 'released', actual_credits = 0,
-      settled_at = now(), release_reason = 'lease_expired_before_settlement'
-      where research_run_id = expired_job.research_run_id and state = 'reserved';
-    insert into public.job_events(workspace_id, job_id, correlation_id, event_type, attempt, metadata)
-    values (expired_job.workspace_id, expired_job.id, expired_job.correlation_id, 'dead_lettered', expired_job.attempts,
-      jsonb_build_object('error_code', 'lease_expired_at_max_attempts'));
+    perform 1 from public.provider_invocations where job_id = expired_job.id for update;
+    select coalesce(sum(coalesce(credits, 0)) filter (where state <> 'started'), 0)::integer,
+      coalesce(bool_or(state = 'started' or error_code in (
+        'lease_expired_before_invocation_settlement',
+        'worker_failure_before_invocation_settlement'
+      )), false)
+    into incurred_credits, had_uncertain_invocation
+    from public.provider_invocations where job_id = expired_job.id;
+
+    update public.provider_invocations set state = 'failed', actual_units = coalesce(actual_units, 0),
+      credits = coalesce(credits, 0), error_code = 'lease_expired_before_invocation_settlement',
+      completed_at = now(),
+      duration_ms = greatest(0, floor(extract(epoch from (now() - started_at)) * 1000)::integer)
+    where job_id = expired_job.id and state = 'started';
+
+    if expired_job.state = 'cancelling' or expired_job.attempts >= expired_job.max_attempts then
+      select * into reservation from public.research_credit_reservations
+        where research_run_id = expired_job.research_run_id for update;
+      if not found then raise exception 'credit_reservation_not_found'; end if;
+      reconciled_credits := greatest(
+        incurred_credits,
+        case when had_uncertain_invocation then reservation.estimated_credits else 0 end
+      );
+      if reservation.state = 'reserved' then
+        if reconciled_credits = 0 and not had_uncertain_invocation then
+          update public.research_credit_reservations set state = 'released', actual_credits = 0,
+            settled_at = now(), release_reason = 'lease_expired_without_incurred_usage'
+          where id = reservation.id;
+          insert into public.job_events(workspace_id, job_id, correlation_id, event_type, attempt, metadata)
+          values (expired_job.workspace_id, expired_job.id, expired_job.correlation_id,
+            'budget_released', expired_job.attempts,
+            jsonb_build_object('reason', 'lease_expired_without_incurred_usage'));
+        else
+          update public.research_credit_reservations set state = 'settled',
+            actual_credits = reconciled_credits, settled_at = now()
+          where id = reservation.id;
+          insert into public.usage_ledger(workspace_id, user_id, provider, operation, credits, correlation_id)
+          select expired_job.workspace_id, r.requested_by, 'research', 'research.collect',
+            reconciled_credits, expired_job.correlation_id
+          from public.research_runs r
+          where r.id = expired_job.research_run_id and r.workspace_id = expired_job.workspace_id;
+          update public.research_runs set actual_credits = reconciled_credits
+            where id = expired_job.research_run_id and workspace_id = expired_job.workspace_id;
+          insert into public.job_events(workspace_id, job_id, correlation_id, event_type, attempt, metadata)
+          values (expired_job.workspace_id, expired_job.id, expired_job.correlation_id,
+            'budget_settled', expired_job.attempts,
+            jsonb_build_object('actual_credits', reconciled_credits,
+              'estimate_retained', had_uncertain_invocation));
+        end if;
+      end if;
+
+      terminal_job_state := case when expired_job.state = 'cancelling' then 'cancelled' else 'dead_letter' end;
+      terminal_run_state := case when expired_job.state = 'cancelling' then 'cancelled' else 'failed' end;
+      terminal_event := case when expired_job.state = 'cancelling' then 'cancelled' else 'dead_lettered' end;
+      update public.jobs set state = terminal_job_state,
+        last_error = case when terminal_job_state = 'dead_letter' then 'lease_expired_at_max_attempts' else last_error end,
+        lease_token = null, lease_expires_at = null, leased_by = null where id = expired_job.id;
+      update public.research_runs set state = terminal_run_state,
+        error_code = case when terminal_run_state = 'failed' then 'lease_expired_at_max_attempts' else null end,
+        completed_at = now()
+        where id = expired_job.research_run_id and workspace_id = expired_job.workspace_id;
+      insert into public.job_events(workspace_id, job_id, correlation_id, event_type, attempt, metadata)
+      values (expired_job.workspace_id, expired_job.id, expired_job.correlation_id,
+        terminal_event, expired_job.attempts,
+        jsonb_build_object('error_code',
+          case when terminal_job_state = 'dead_letter' then 'lease_expired_at_max_attempts' else null end));
+    end if;
   end loop;
 
   select j.* into leased_job from public.jobs j
@@ -384,6 +550,10 @@ begin
     and ((j.state = 'queued' and j.available_at <= now()) or (j.state = 'leased' and j.lease_expires_at < now()))
     and j.attempts < j.max_attempts
     and not app_private.research_control_disabled(j.workspace_id, null)
+    and (select count(*) from public.jobs active
+      where active.state = 'leased' and active.lease_expires_at >= now())
+      < coalesce((select max_concurrent from app_private.research_safety_limits
+        where scope = 'global'), 10)
     and (select count(*) from public.jobs active
       where active.workspace_id = j.workspace_id and active.state = 'leased' and active.lease_expires_at >= now())
       < coalesce((select max_concurrent from app_private.research_safety_limits
@@ -434,6 +604,7 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('provider-cap:global', 0));
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('provider-cap:' || target_provider, 0));
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('workspace-cap:' || target_job.workspace_id::text, 0));
+  perform app_private.consume_provider_rate_limit(target_job.workspace_id, target_provider);
   select max_concurrent into global_cap from app_private.research_safety_limits where scope = 'global';
   select max_concurrent into provider_cap from app_private.research_safety_limits
     where scope = 'provider' and provider = target_provider;
@@ -466,7 +637,7 @@ begin
   if auth.role() <> 'service_role' then raise exception 'service_role_required'; end if;
   if target_state not in ('succeeded','failed','cancelled') or target_actual_units not between 0 and 25
     or target_credits not between 0 and 1000000 or jsonb_typeof(safe_metadata) <> 'object'
-    or safe_metadata ?| array['prompt','content','token','api_key','authorization','transcript']
+    or app_private.jsonb_has_sensitive_key(safe_metadata)
     then raise exception 'invalid_invocation_result'; end if;
   select * into target_invocation from public.provider_invocations where id = target_invocation_id for update;
   if not found then raise exception 'provider_invocation_not_found'; end if;
@@ -486,7 +657,12 @@ $$;
 create or replace function public.settle_research_usage(
   target_job_id uuid, target_lease_token uuid, target_actual_credits integer
 ) returns void language plpgsql security definer set search_path = '' as $$
-declare target_job public.jobs; reservation public.research_credit_reservations;
+declare
+  target_job public.jobs;
+  reservation public.research_credit_reservations;
+  recorded_credits integer;
+  reconciled_credits integer;
+  had_uncertain_invocation boolean;
 begin
   if auth.role() <> 'service_role' then raise exception 'service_role_required'; end if;
   if target_actual_credits not between 0 and 1000000 then raise exception 'invalid_actual_credits'; end if;
@@ -496,17 +672,37 @@ begin
   select * into reservation from public.research_credit_reservations
     where research_run_id = target_job.research_run_id for update;
   if not found then raise exception 'credit_reservation_not_found'; end if;
+  perform 1 from public.provider_invocations where job_id = target_job.id for update;
+  select coalesce(sum(coalesce(credits, 0)) filter (where state <> 'started'), 0)::integer,
+    coalesce(bool_or(state = 'started' or error_code in (
+      'lease_expired_before_invocation_settlement',
+      'worker_failure_before_invocation_settlement'
+    )), false)
+  into recorded_credits, had_uncertain_invocation
+  from public.provider_invocations where job_id = target_job.id;
+  reconciled_credits := greatest(
+    target_actual_credits,
+    recorded_credits,
+    case when had_uncertain_invocation then reservation.estimated_credits else 0 end
+  );
   if reservation.state = 'settled' then
-    if reservation.actual_credits = target_actual_credits then return; end if;
+    if reservation.actual_credits = reconciled_credits then return; end if;
     raise exception 'credit_settlement_conflict';
   end if;
   if reservation.state = 'released' then raise exception 'credit_reservation_released'; end if;
-  update public.research_credit_reservations set state = 'settled', actual_credits = target_actual_credits,
+  update public.research_credit_reservations set state = 'settled', actual_credits = reconciled_credits,
     settled_at = now() where id = reservation.id;
   insert into public.usage_ledger(workspace_id, user_id, provider, operation, credits, correlation_id)
-  select target_job.workspace_id, r.requested_by, 'research', 'research.collect', target_actual_credits,
-    target_job.correlation_id from public.research_runs r where r.id = target_job.research_run_id;
-  update public.research_runs set actual_credits = target_actual_credits where id = target_job.research_run_id;
+  select target_job.workspace_id, r.requested_by, 'research', 'research.collect', reconciled_credits,
+    target_job.correlation_id from public.research_runs r
+    where r.id = target_job.research_run_id and r.workspace_id = target_job.workspace_id;
+  update public.research_runs set actual_credits = reconciled_credits
+    where id = target_job.research_run_id and workspace_id = target_job.workspace_id;
+  insert into public.job_events(workspace_id, job_id, correlation_id, event_type, attempt, metadata)
+  values (target_job.workspace_id, target_job.id, target_job.correlation_id,
+    'budget_settled', target_job.attempts,
+    jsonb_build_object('actual_credits', reconciled_credits,
+      'estimate_retained', had_uncertain_invocation));
 end;
 $$;
 
@@ -545,7 +741,7 @@ $$;
 -- reservation to the estimated amount until the worker adopts explicit usage.
 create or replace function public.ack_research_job(target_job_id uuid, target_lease_token uuid, normalized_sources jsonb)
 returns void language plpgsql security definer set search_path = '' as $$
-declare target_job public.jobs; fallback_credits integer;
+declare target_job public.jobs; reservation public.research_credit_reservations;
 begin
   if auth.role() <> 'service_role' then raise exception 'service_role_required'; end if;
   select * into target_job from public.jobs where id = target_job_id for update;
@@ -559,9 +755,14 @@ begin
   from jsonb_to_recordset(normalized_sources) as source(
     provider text, source_type text, url text, title text, content text, provenance jsonb, captured_at timestamptz
   );
-  select estimated_credits into fallback_credits from public.research_credit_reservations
-    where research_run_id = target_job.research_run_id;
-  perform public.settle_research_usage(target_job.id, target_lease_token, fallback_credits);
+  select * into reservation from public.research_credit_reservations
+    where research_run_id = target_job.research_run_id for update;
+  if not found then raise exception 'credit_reservation_not_found'; end if;
+  if reservation.state = 'reserved' then
+    perform public.settle_research_usage(target_job.id, target_lease_token, reservation.estimated_credits);
+  elsif reservation.state = 'released' then
+    raise exception 'credit_reservation_released';
+  end if;
   update public.jobs set state = 'completed', lease_token = null, lease_expires_at = null, leased_by = null where id = target_job.id;
   update public.research_runs set state = 'completed', completed_at = now(), error_code = null where id = target_job.research_run_id;
   insert into public.job_events(workspace_id, job_id, correlation_id, event_type, attempt, metadata)
@@ -579,6 +780,11 @@ begin
   select * into target_job from public.jobs where id = target_job_id for update;
   if not found or target_job.state not in ('leased','cancelling') or target_job.lease_token <> target_lease_token
     then raise exception 'lease_lost'; end if;
+  update public.provider_invocations set state = 'failed', actual_units = coalesce(actual_units, 0),
+    credits = coalesce(credits, 0), error_code = 'worker_failure_before_invocation_settlement',
+    completed_at = now(),
+    duration_ms = greatest(0, floor(extract(epoch from (now() - started_at)) * 1000)::integer)
+  where job_id = target_job.id and state = 'started';
   if target_job.state = 'cancelling' then
     select coalesce(sum(credits), 0)::integer into incurred_credits
       from public.provider_invocations where job_id = target_job.id and state <> 'started';
@@ -628,5 +834,11 @@ grant execute on function public.lease_research_job(text,integer),
   public.ack_research_job(uuid,uuid,jsonb),
   public.fail_research_job(uuid,uuid,text,boolean)
 to service_role;
+
+revoke all on function app_private.jsonb_has_sensitive_key(jsonb),
+  app_private.research_control_disabled(uuid,text),
+  app_private.consume_research_rate_limit(uuid,uuid),
+  app_private.consume_provider_rate_limit(uuid,text)
+from public, anon, authenticated;
 
 commit;
