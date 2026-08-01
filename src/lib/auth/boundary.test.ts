@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { authRedirect, isProtectedAppPath } from "./boundary";
+import { authRedirect, isProtectedAppPath, onboardingConfigRedirect } from "./boundary";
 
 describe("auth route boundary", () => {
   it("keeps demo mode open without Supabase", () => {
     expect(authRedirect({ configured: false, authenticated: false, pathname: "/", search: "" })).toBeNull();
+  });
+
+  it("returns demo onboarding to the runnable workspace before a client is created", () => {
+    expect(onboardingConfigRedirect(false)).toBe("/");
+    expect(onboardingConfigRedirect(true)).toBeNull();
   });
 
   it("sends anonymous connected-mode users to sign in with their destination", () => {

@@ -11,6 +11,10 @@ export function isProtectedAppPath(pathname: string) {
   return pathname === "/" || pathname === "/onboarding" || pathname.startsWith("/onboarding/");
 }
 
+export function onboardingConfigRedirect(configured: boolean) {
+  return configured ? null : "/";
+}
+
 export function authRedirect({ configured, authenticated, pathname, search }: AuthRedirectInput) {
   if (!configured) return null;
 

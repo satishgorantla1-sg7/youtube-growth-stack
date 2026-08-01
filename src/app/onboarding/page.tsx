@@ -4,8 +4,15 @@ import { AuthShell } from "@/components/auth-shell";
 import { createWorkspace } from "@/app/auth/actions";
 import { createClient } from "@/lib/supabase/server";
 import { ensureWorkspace } from "@/lib/auth/workspace";
+import { onboardingConfigRedirect } from "@/lib/auth/boundary";
+import { hasSupabaseConfig } from "@/lib/env";
+
+export const dynamic = "force-dynamic";
 
 export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const configRedirect = onboardingConfigRedirect(hasSupabaseConfig());
+  if (configRedirect) redirect(configRedirect);
+
   const params = await searchParams;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
