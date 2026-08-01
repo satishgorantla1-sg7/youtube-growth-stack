@@ -29,7 +29,39 @@ import {
 } from "lucide-react";
 import { FormEvent, useCallback, useRef, useState } from "react";
 
-type Message = { id: string; role: "user" | "assistant"; text: string };
+type ApprovalState = "pending" | "submitting" | "queued" | "cancelled" | "error";
+
+type ResearchApproval = {
+  approvalId: string;
+  prompt: string;
+  maxSources: number;
+  estimatedCredits: number;
+  status: ApprovalState;
+  error?: string;
+};
+
+type Message = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  approval?: ResearchApproval;
+};
+
+type ResearchResponse = {
+  approvalId?: string;
+  state?: string;
+  message?: string;
+  error?: string;
+  plan?: {
+    maxSources?: number;
+    estimatedCredits?: number;
+  };
+};
+
+type ApprovalResponse = {
+  state?: "queued" | "cancelled";
+  error?: string;
+};
 
 function starterMessages(displayName: string): Message[] {
   return [{
@@ -57,10 +89,11 @@ const ideas = [
 type GrowthWorkspaceProps = {
   displayName?: string;
   workspaceName?: string;
+  workspaceId?: string;
   signOutAction?: () => Promise<void>;
 };
 
-export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Personal workspace", signOutAction }: GrowthWorkspaceProps) {
+export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Personal workspace", workspaceId, signOutAction }: GrowthWorkspaceProps) {
   const [messages, setMessages] = useState<Message[]>(() => starterMessages(displayName));
   const [prompt, setPrompt] = useState("");
   const [isThinking, setIsThinking] = useState(false);
@@ -104,21 +137,51 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
       const response = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: clean, mode: "quick", sources: ["youtube", "web"], idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify({ prompt: clean, workspaceId, mode: "quick", sources: ["youtube", "web"], idempotencyKey: crypto.randomUUID() }),
       });
-      const result = (await response.json()) as { message?: string };
+      const result = (await response.json()) as ResearchResponse;
+      if (!response.ok) throw new Error(result.error ?? "research_run_failed");
       const reply = result.message ?? "I queued the research. I’ll bring the evidence and draft to your approval queue.";
-      setMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", text: reply }]);
+      const approval = result.state === "awaiting_approval" && result.approvalId ? {
+        approvalId: result.approvalId,
+        prompt: clean,
+        maxSources: result.plan?.maxSources ?? 10,
+        estimatedCredits: result.plan?.estimatedCredits ?? 0,
+        status: "pending" as const,
+      } : undefined;
+      setMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", text: reply, approval }]);
       void speak(reply);
     } catch {
       setMessages((current) => [
         ...current,
-        { id: crypto.randomUUID(), role: "assistant", text: "I couldn’t start that run. Check the provider status and try again." },
+        { id: crypto.randomUUID(), role: "assistant", text: "I couldn’t prepare that research plan. Check your connection and try again." },
       ]);
     } finally {
       setIsThinking(false);
     }
-  }, [isThinking, speak]);
+  }, [isThinking, speak, workspaceId]);
+
+  const decideApproval = useCallback(async (messageId: string, approvalId: string, decision: "approved" | "rejected") => {
+    setMessages((current) => current.map((message) => message.id === messageId && message.approval
+      ? { ...message, approval: { ...message.approval, status: "submitting", error: undefined } }
+      : message));
+    try {
+      const response = await fetch("/api/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalId, decision }),
+      });
+      const result = (await response.json()) as ApprovalResponse;
+      if (!response.ok || !result.state) throw new Error(result.error ?? "approval_transition_failed");
+      setMessages((current) => current.map((message) => message.id === messageId && message.approval
+        ? { ...message, approval: { ...message.approval, status: result.state === "queued" ? "queued" : "cancelled", error: undefined } }
+        : message));
+    } catch {
+      setMessages((current) => current.map((message) => message.id === messageId && message.approval
+        ? { ...message, approval: { ...message.approval, status: "error", error: "I couldn’t save your decision. Please try again." } }
+        : message));
+    }
+  }, []);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -244,7 +307,42 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
               {messages.map((message) => (
                 <div className={`message ${message.role}`} key={message.id}>
                   <span className="message-avatar">{message.role === "assistant" ? <Sparkles size={17} /> : "SG"}</span>
-                  <div><small>{message.role === "assistant" ? "Growth agent" : "You"}</small><p>{message.text}</p></div>
+                  <div>
+                    <small>{message.role === "assistant" ? "Growth agent" : "You"}</small>
+                    <p>{message.text}</p>
+                    {message.approval ? (
+                      <section className="conversation-approval" aria-label={`Research approval for ${message.approval.prompt}`}>
+                        <div className="conversation-approval-heading">
+                          <span><ShieldCheck size={16} /> Human approval required</span>
+                          <strong>{message.approval.estimatedCredits} credits</strong>
+                        </div>
+                        <p>This research will inspect up to {message.approval.maxSources} sources. Nothing is queued until you approve it.</p>
+                        {message.approval.status === "pending" || message.approval.status === "error" ? (
+                          <div className="conversation-approval-actions">
+                            <button
+                              type="button"
+                              className="approve"
+                              onClick={() => void decideApproval(message.id, message.approval!.approvalId, "approved")}
+                            >
+                              <Check size={15} /> Approve and queue
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void decideApproval(message.id, message.approval!.approvalId, "rejected")}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        ) : null}
+                        <div className="conversation-approval-status" role="status" aria-live="polite">
+                          {message.approval.status === "submitting" ? <><LoaderCircle size={14} /> Saving your decision…</> : null}
+                          {message.approval.status === "queued" ? <><Check size={14} /> Approved. Research is queued.</> : null}
+                          {message.approval.status === "cancelled" ? "Rejected. No research was queued and no credits were used." : null}
+                        </div>
+                        {message.approval.status === "error" ? <p className="conversation-approval-error" role="alert">{message.approval.error}</p> : null}
+                      </section>
+                    ) : null}
+                  </div>
                 </div>
               ))}
               {isThinking ? <div className="thinking"><LoaderCircle size={16} /> Researching your request…</div> : null}

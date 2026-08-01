@@ -105,6 +105,19 @@ button { color: inherit; }
 .message small { display: block; margin: 0 0 4px 2px; color: var(--muted-foreground); font-size: 9px; font-weight: 700; }
 .message p { margin: 0; padding: 11px 13px; border: 1px solid var(--border); border-radius: 4px 14px 14px; background: var(--card); font-size: 12px; line-height: 1.55; }
 .message.user p { color: white; background: var(--foreground); border-color: var(--foreground); border-radius: 14px 4px 14px 14px; }
+.conversation-approval { margin-top: 8px; padding: 13px; border: 1px solid color-mix(in oklch, var(--primary) 35%, var(--border)); border-radius: 13px; background: color-mix(in oklch, var(--primary) 5%, var(--card)); }
+.conversation-approval-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 10px; }
+.conversation-approval-heading span { display: flex; align-items: center; gap: 6px; font-weight: 750; }
+.conversation-approval-heading strong { white-space: nowrap; color: var(--primary); }
+.message .conversation-approval > p { margin-top: 9px; padding: 0; border: 0; border-radius: 0; color: var(--muted-foreground); background: transparent; font-size: 9px; }
+.conversation-approval-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+.conversation-approval-actions button { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); font-size: 9px; font-weight: 750; cursor: pointer; }
+.conversation-approval-actions .approve { color: white; border-color: var(--foreground); background: var(--foreground); }
+.conversation-approval-actions button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.conversation-approval-status { display: flex; align-items: center; gap: 6px; margin-top: 9px; color: var(--muted-foreground); font-size: 9px; font-weight: 650; }
+.conversation-approval-status svg { flex: 0 0 auto; }
+.conversation-approval-status .lucide-loader-circle { animation: spin 1s linear infinite; }
+.message .conversation-approval-error { margin-top: 9px; padding: 8px 9px; border: 1px solid color-mix(in oklch, var(--destructive) 35%, var(--border)); border-radius: 8px; color: var(--destructive); background: color-mix(in oklch, var(--destructive) 7%, var(--card)); }
 .thinking { display: flex; align-items: center; gap: 7px; margin-left: 42px; color: var(--muted-foreground); font-size: 10px; }
 .thinking svg { animation: spin 1s linear infinite; }
 .composer { margin: 14px 20px 0; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: 0 14px 30px -25px black; }

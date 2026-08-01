@@ -23,5 +23,5 @@ export default async function Home() {
   const fullName = typeof user.user_metadata.full_name === "string" ? user.user_metadata.full_name : undefined;
   const displayName = fullName || user.email?.split("@")[0] || "Creator";
 
-  return <GrowthWorkspace displayName={displayName} workspaceName={workspace?.name ?? "Creator workspace"} signOutAction={signOut} />;
+  return <GrowthWorkspace displayName={displayName} workspaceName={workspace?.name ?? "Creator workspace"} workspaceId={membership.workspaceId} signOutAction={signOut} />;
 }

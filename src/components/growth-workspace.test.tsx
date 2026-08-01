@@ -40,7 +40,24 @@ function mockVoiceFetch() {
       return { ok: true, status: 200, json: async () => ({ text: "Draft voice request" }) } as Response;
     }
     if (url === "/api/research") {
-      return { ok: true, status: 200, json: async () => ({ message: "Research queued" }) } as Response;
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({
+          approvalId: "11111111-1111-4111-8111-111111111111",
+          state: "awaiting_approval",
+          message: "Review this bounded research plan.",
+          plan: { maxSources: 10, estimatedCredits: 4 },
+        }),
+      } as Response;
+    }
+    if (url === "/api/approvals") {
+      const body = JSON.parse(String(init?.body)) as { decision: "approved" | "rejected" };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ state: body.decision === "approved" ? "queued" : "cancelled" }),
+      } as Response;
     }
     return { ok: true, status: 204 } as Response;
   });
@@ -84,6 +101,8 @@ describe("GrowthWorkspace voice consent", () => {
     const researchCall = fetchMock.mock.calls.find(([input]) => String(input) === "/api/research");
     const request = JSON.parse(String(researchCall?.[1]?.body)) as { prompt: string };
     expect(request.prompt).toBe("Edited voice request");
+    expect(await screen.findByRole("region", { name: /research approval for edited voice request/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /approve and queue/i })).toBeEnabled();
   });
 
   it("preserves the text path when microphone permission is denied", async () => {
@@ -99,5 +118,81 @@ describe("GrowthWorkspace voice consent", () => {
     fireEvent.change(composer, { target: { value: "Use the text fallback" } });
     fireEvent.keyDown(composer, { key: "Enter" });
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/research")).toBe(true));
+  });
+});
+
+describe("GrowthWorkspace research approvals", () => {
+  it("shows a bounded approval plan for typed input and only queues after approval", async () => {
+    const fetchMock = mockVoiceFetch();
+    render(<GrowthWorkspace workspaceId="22222222-2222-4222-8222-222222222222" />);
+
+    const composer = screen.getByLabelText(/message your growth agent/i);
+    fireEvent.change(composer, { target: { value: "Find three ideas about AI productivity" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+
+    const approval = await screen.findByRole("region", { name: /research approval for find three ideas about ai productivity/i });
+    expect(approval).toHaveTextContent("10 sources");
+    expect(approval).toHaveTextContent("4 credits");
+    expect(approval).toHaveTextContent("Nothing is queued until you approve it.");
+
+    const researchCall = fetchMock.mock.calls.find(([input]) => String(input) === "/api/research");
+    const researchRequest = JSON.parse(String(researchCall?.[1]?.body)) as { workspaceId?: string };
+    expect(researchRequest.workspaceId).toBe("22222222-2222-4222-8222-222222222222");
+    expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/approvals")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: /approve and queue/i }));
+
+    expect(await screen.findByText("Approved. Research is queued.")).toBeInTheDocument();
+    const approvalCall = fetchMock.mock.calls.find(([input]) => String(input) === "/api/approvals");
+    expect(JSON.parse(String(approvalCall?.[1]?.body))).toEqual({
+      approvalId: "11111111-1111-4111-8111-111111111111",
+      decision: "approved",
+    });
+    expect(screen.queryByRole("button", { name: /approve and queue/i })).not.toBeInTheDocument();
+  });
+
+  it("records rejection without queueing research", async () => {
+    mockVoiceFetch();
+    render(<GrowthWorkspace />);
+
+    const composer = screen.getByLabelText(/message your growth agent/i);
+    fireEvent.change(composer, { target: { value: "Analyse this competitor" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
+
+    expect(await screen.findByText("Rejected. No research was queued and no credits were used.")).toBeInTheDocument();
+  });
+
+  it("keeps the decision controls available after an approval request fails", async () => {
+    const fetchMock = mockVoiceFetch();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/research") {
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({
+            approvalId: "11111111-1111-4111-8111-111111111111",
+            state: "awaiting_approval",
+            message: "Review this bounded research plan.",
+            plan: { maxSources: 10, estimatedCredits: 4 },
+          }),
+        } as Response;
+      }
+      if (url === "/api/approvals") {
+        return { ok: false, status: 409, json: async () => ({ error: "approval_transition_failed" }) } as Response;
+      }
+      return { ok: true, status: 204 } as Response;
+    });
+
+    render(<GrowthWorkspace />);
+    const composer = screen.getByLabelText(/message your growth agent/i);
+    fireEvent.change(composer, { target: { value: "Find content gaps" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    fireEvent.click(await screen.findByRole("button", { name: /approve and queue/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("I couldn’t save your decision. Please try again.");
+    expect(screen.getByRole("button", { name: /approve and queue/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeEnabled();
   });
 });
