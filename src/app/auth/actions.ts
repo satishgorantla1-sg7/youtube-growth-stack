@@ -85,7 +85,7 @@ export async function signUp(_state: AuthActionState, formData: FormData): Promi
 
   const workspace = await ensureWorkspace(supabase, parsed.data);
   if (workspace.error) redirect("/onboarding?error=workspace");
-  redirect("/");
+  redirect("/onboarding?stage=channel");
 }
 
 export async function createWorkspace(_state: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -104,7 +104,7 @@ export async function createWorkspace(_state: AuthActionState, formData: FormDat
 
   const workspace = await ensureWorkspace(supabase, parsed.data);
   if (workspace.error) return { ...workspaceError(workspace.error), fields: values };
-  redirect("/");
+  redirect("/onboarding?stage=channel");
 }
 
 export async function signOut() {
