@@ -47,6 +47,7 @@ function mockVoiceFetch() {
         ok: true,
         status: 201,
         json: async () => ({
+          runId: "33333333-3333-4333-8333-333333333333",
           approvalId: "11111111-1111-4111-8111-111111111111",
           state: "awaiting_approval",
           message: "Review this bounded research plan.",
@@ -59,7 +60,25 @@ function mockVoiceFetch() {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ state: body.decision === "approved" ? "queued" : "cancelled" }),
+        json: async () => ({
+          runId: "33333333-3333-4333-8333-333333333333",
+          state: body.decision === "approved" ? "queued" : "cancelled",
+          execution: { state: "idle", missing: [] },
+        }),
+      } as Response;
+    }
+    if (url === "/api/research/33333333-3333-4333-8333-333333333333") {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          state: "completed",
+          execution: { state: "idle", missing: [] },
+          sources: [
+            { provider: "apify", type: "youtube", title: "YouTube evidence", url: "https://youtube.com/watch?v=123", capturedAt: new Date().toISOString() },
+            { provider: "firecrawl", type: "web", title: "Web evidence", url: "https://example.com/evidence", capturedAt: new Date().toISOString() },
+          ],
+        }),
       } as Response;
     }
     return { ok: true, status: 204 } as Response;
@@ -290,7 +309,8 @@ describe("GrowthWorkspace research approvals", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /approve and queue/i }));
 
-    expect(await screen.findByText("Approved. Research is queued.")).toBeInTheDocument();
+    expect(await screen.findByText("Research complete. 2 evidence sources saved.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "YouTube evidence" })).toHaveAttribute("href", "https://youtube.com/watch?v=123");
     const approvalCall = fetchMock.mock.calls.find(([input]) => String(input) === "/api/approvals");
     expect(JSON.parse(String(approvalCall?.[1]?.body))).toEqual({
       approvalId: "11111111-1111-4111-8111-111111111111",
@@ -320,6 +340,7 @@ describe("GrowthWorkspace research approvals", () => {
           ok: true,
           status: 201,
           json: async () => ({
+            runId: "33333333-3333-4333-8333-333333333333",
             approvalId: "11111111-1111-4111-8111-111111111111",
             state: "awaiting_approval",
             message: "Review this bounded research plan.",

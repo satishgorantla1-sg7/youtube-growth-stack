@@ -6,7 +6,7 @@ import { createSupabaseWorkerRepository } from "./supabase-repository";
 type ResearchExecutor = typeof runResearch;
 
 export async function runWorkerOnce(repository: ResearchJobRepository, workerId: string, execute: ResearchExecutor = runResearch): Promise<"idle" | "completed" | "queued" | "dead_letter"> {
-  const job = await repository.lease(workerId, 60);
+  const job = await repository.lease(workerId, 180);
   if (!job) return "idle";
   try {
     const sources = await execute(job.plan.prompt, job.plan.sources, job.plan.maxSources);

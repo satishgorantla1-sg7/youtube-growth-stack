@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const scheduleResearchDispatch = vi.hoisted(() => vi.fn(() => ({ state: "idle", missing: [] })));
+
+vi.mock("@/lib/research/schedule", () => ({ scheduleResearchDispatch }));
+
 import { POST as decideApproval } from "./route";
 import { POST as createResearch } from "../research/route";
 
@@ -27,9 +32,12 @@ async function createDemoApproval() {
 }
 
 describe("POST /api/approvals", () => {
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    scheduleResearchDispatch.mockClear();
+  });
 
-  it("queues a demo research run only after explicit approval", async () => {
+  it("queues and dispatches a demo research run only after explicit approval", async () => {
     const run = await createDemoApproval();
     expect(run.state).toBe("awaiting_approval");
 
@@ -44,11 +52,13 @@ describe("POST /api/approvals", () => {
       approvalId: run.approvalId,
       runId: run.runId,
       state: "queued",
+      execution: { state: "idle", missing: [] },
     });
     expect(result.jobId).toEqual(expect.any(String));
+    expect(scheduleResearchDispatch).toHaveBeenCalledOnce();
   });
 
-  it("cancels a rejected demo run without creating a job", async () => {
+  it("cancels a rejected demo run without creating or dispatching a job", async () => {
     const run = await createDemoApproval();
 
     const response = await decideApproval(jsonRequest("/api/approvals", {
@@ -65,6 +75,7 @@ describe("POST /api/approvals", () => {
       state: "cancelled",
     });
     expect(result).not.toHaveProperty("jobId");
+    expect(scheduleResearchDispatch).not.toHaveBeenCalled();
   });
 
   it("does not allow the same approval to be decided twice", async () => {

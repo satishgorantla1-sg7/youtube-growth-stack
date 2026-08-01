@@ -2,7 +2,7 @@
 
 An open-source, voice-first research and content-planning SaaS for YouTube creators. Connect a channel, ask the growth agent a question, review its evidence, and approve a complete content package: ideas, titles, thumbnail concepts, hooks, an outline, and a script.
 
-> **Current status:** foundation/MVP. The interface and demo research loop run without paid credentials. Supabase, OpenAI voice, Firecrawl, Apify, and YouTube OAuth are adapter-ready and activate through environment configuration. Auto-publishing is deliberately outside the first release.
+> **Current status:** foundation/MVP. Supabase identity, OpenAI voice, approval-gated jobs, on-demand Apify/Firecrawl execution, live run status, and persisted evidence are implemented. Demo mode remains credential-free. Evidence-grounded idea synthesis, YouTube OAuth, and auto-publishing are later slices.
 
 ![MIT License](https://img.shields.io/badge/license-MIT-111111)
 ![Next.js](https://img.shields.io/badge/Next.js-16-111111)
@@ -19,8 +19,11 @@ flowchart TB
   VOICE --> RT[OpenAI Realtime voice]
   VOICE --> STT[GPT-4o Transcribe fallback]
   API --> APPROVAL{Human approval}
-  APPROVAL -->|approved| JOBS[Durable job queue]
+  APPROVAL -->|approved| DISPATCH[On-demand worker dispatch]
   APPROVAL -->|rejected| UI
+  DISPATCH --> JOBS[Durable Supabase job queue]
+  UI --> STATUS[Authenticated run status]
+  STATUS --> DB
   JOBS --> ORCH[Research orchestrator]
   ORCH --> YT[YouTube Data API]
   ORCH --> APIFY[Apify YouTube adapter]
@@ -189,13 +192,15 @@ To verify the same gates used by pull requests:
 npm run verify
 ```
 
-Durable research runs stop for approval before provider execution. After applying the Supabase migrations and configuring server-only worker credentials, start the consumer with:
+Durable research runs stop for approval before provider execution. In production, approval schedules a bounded background dispatch and the conversation polls the authenticated run-status endpoint until evidence is saved. Configure `SUPABASE_SERVICE_ROLE_KEY`, `APIFY_API_TOKEN`, and `FIRECRAWL_API_KEY` as server-only Vercel Production variables. Missing configuration leaves the job safely queued; connected mode never substitutes demo evidence.
+
+A continuously running worker is still available for local development or a future dedicated worker host:
 
 ```bash
 npm run worker:research
 ```
 
-See [Durable research jobs](docs/DURABLE_RESEARCH_JOBS.md) for the lease/ack/fail contract, deployment requirements, and migration risk.
+See [Durable research jobs](docs/DURABLE_RESEARCH_JOBS.md) for dispatch recovery, lease/ack/fail contracts, deployment requirements, provider inputs, and rollback.
 
 ## Configure integrations
 
@@ -204,9 +209,10 @@ Copy `.env.example` to `.env.local` and add only the integrations you are testin
 | Capability | Environment variables | Safe fallback |
 |---|---|---|
 | Authentication and data | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | UI demo only |
+| Production worker | `SUPABASE_SERVICE_ROLE_KEY`, optional `RESEARCH_WORKER_ID` | Approved job remains queued |
 | Voice | `OPENAI_API_KEY` and model overrides | Browser speech output + demo transcript |
-| YouTube research | `APIFY_API_TOKEN` and actor ID | Deterministic demo source |
-| Web research | `FIRECRAWL_API_KEY` | Deterministic demo source |
+| YouTube research | `APIFY_API_TOKEN` and actor ID | Deterministic source only in demo mode |
+| Web research | `FIRECRAWL_API_KEY` | Deterministic source only in demo mode |
 | Owned channel | Google OAuth variables | Example connected channel |
 
 The default recorded-turn transcription model is `gpt-4o-transcribe`, which improves on original Whisper models. The realtime model is configurable because audio model availability evolves. Permanent OpenAI keys remain server-side; the Realtime route returns only short-lived client secrets. See the [OpenAI model catalog](https://developers.openai.com/api/docs/models) and [GPT-4o Transcribe](https://developers.openai.com/api/docs/models/gpt-4o-transcribe).
@@ -224,8 +230,8 @@ Before enabling production credentials, read the [public-launch safety and opera
 1. Repository foundation, demo experience, schemas, agent instructions, and CI.
 2. Supabase authentication, onboarding, workspace creation, and tested RLS. (complete)
 3. YouTube OAuth and channel snapshot ingestion.
-4. Durable worker consumer for Supabase Queues/job records.
-5. Production Firecrawl and Apify contract tests with quotas.
+4. Durable approval-gated worker, on-demand dispatch, status polling, and evidence display. (complete)
+5. Production Firecrawl and Apify contracts with bounded requests. (complete; quota dashboards remain)
 6. Evidence-grounded synthesis and versioned content packages.
 7. Realtime WebRTC client, accessibility, voice consent, and retention jobs.
 8. Billing, admin controls, observability, OAuth verification, and public beta.
