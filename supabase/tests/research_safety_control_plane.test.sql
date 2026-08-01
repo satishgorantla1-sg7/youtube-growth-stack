@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(61);
+select plan(64);
 
 select has_table('public', 'research_credit_reservations', 'credit reservation table exists');
 select has_table('public', 'provider_invocations', 'safe provider invocation ledger exists');
@@ -146,10 +146,17 @@ select throws_ok(
     'succeeded', 2, 2, 0.01, null, '{"request":{"Token":"secret"}}'::jsonb)$$,
   'P0001', 'invalid_invocation_result', 'nested case-insensitive secret metadata is rejected'
 );
-select lives_ok(
+select throws_ok(
   $$select public.finish_provider_invocation(
     (current_setting('test.safety_invocation')::jsonb->>'id')::uuid,
     'succeeded', 2, 2, 0.01, null, '{"http_status":200}'::jsonb)$$,
+  'P0001', 'provider_invocation_approved_bound_exceeded',
+  'provider result cannot report credits above its approved worst-case bound'
+);
+select lives_ok(
+  $$select public.finish_provider_invocation(
+    (current_setting('test.safety_invocation')::jsonb->>'id')::uuid,
+    'succeeded', 2, 1, 0.01, null, '{"http_status":200}'::jsonb)$$,
   'safe bounded invocation metadata is recorded'
 );
 
@@ -240,7 +247,7 @@ select set_config('test.failed_invocation', public.begin_provider_invocation(
 select lives_ok(
   $$select public.finish_provider_invocation(
     (current_setting('test.failed_invocation')::jsonb->>'id')::uuid,
-    'failed', 2, 2, 0.01, 'upstream_error', '{"http_status":500}'::jsonb)$$,
+    'failed', 2, 1, 0.01, 'upstream_error', '{"http_status":500}'::jsonb)$$,
   'failed provider attempt records incurred credits'
 );
 select set_config('test.success_invocation', public.begin_provider_invocation(
@@ -252,6 +259,14 @@ select lives_ok(
     (current_setting('test.success_invocation')::jsonb->>'id')::uuid,
     'succeeded', 1, 1, 0.01, null, '{"http_status":200}'::jsonb)$$,
   'successful provider attempt records incurred credits'
+);
+select throws_ok(
+  $$select public.begin_provider_invocation(
+    (current_setting('test.cumulative_job')::jsonb->>'id')::uuid,
+    (current_setting('test.cumulative_job')::jsonb->>'leaseToken')::uuid,
+    'firecrawl', 'web.search', 15, 'cumulative-retry-over-approved-budget')$$,
+  'P0001', 'research_approval_budget_exhausted',
+  'a retry cannot exceed the approved reservation after finished credits'
 );
 select lives_ok(
   $$select public.settle_research_usage(
@@ -271,7 +286,7 @@ select set_config('request.jwt.claim.sub', '31000000-0000-4000-8000-000000000001
 select is(
   (select actual_credits from public.research_credit_reservations
     where research_run_id = current_setting('test.cumulative_run')::uuid),
-  3, 'cumulative settlement charges failed and successful attempts exactly once'
+  2, 'cumulative settlement charges failed and successful attempts exactly once'
 );
 select is(
   (select state from public.jobs
@@ -320,6 +335,14 @@ select set_config('test.expiry_stale_invocation', public.begin_provider_invocati
   (current_setting('test.expiry_job')::jsonb->>'id')::uuid,
   (current_setting('test.expiry_job')::jsonb->>'leaseToken')::uuid,
   'firecrawl', 'web.search', 5, 'expiry-stale-invocation')::text, true);
+select throws_ok(
+  $$select public.begin_provider_invocation(
+    (current_setting('test.expiry_job')::jsonb->>'id')::uuid,
+    (current_setting('test.expiry_job')::jsonb->>'leaseToken')::uuid,
+    'firecrawl', 'web.search', 15, 'expiry-parallel-over-approved-budget')$$,
+  'P0001', 'research_approval_budget_exhausted',
+  'an in-flight invocation reserves its worst case before a parallel start'
+);
 reset role;
 update public.jobs set max_attempts = attempts, lease_expires_at = now() - interval '1 second'
 where id = (current_setting('test.expiry_job')::jsonb->>'id')::uuid;

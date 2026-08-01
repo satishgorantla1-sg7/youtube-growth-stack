@@ -36,6 +36,9 @@ function safeWorkerError(error: unknown): ProviderError {
   const message = error instanceof Error ? error.message : "";
   const controlCode = RETRYABLE_CONTROL_ERRORS.find((code) => message.includes(code));
   if (controlCode) return new ProviderError(controlCode, true);
+  if (message.includes("research_approval_budget_exhausted")) {
+    return new ProviderError("research_approval_budget_exhausted", false);
+  }
   if (message.includes("research_cancellation_requested")) return new ProviderError("research_cancellation_requested", false);
   if (message.includes("lease_lost")) return new ProviderError("lease_lost", true);
   return new ProviderError("research_failed", false);

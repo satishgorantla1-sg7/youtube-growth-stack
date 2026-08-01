@@ -579,7 +579,10 @@ create or replace function public.begin_provider_invocation(
   target_operation text, target_requested_units integer, request_idempotency_key text
 ) returns jsonb language plpgsql security definer set search_path = '' as $$
 declare target_job public.jobs; existing public.provider_invocations; created public.provider_invocations;
+  reservation public.research_credit_reservations;
   global_cap integer; provider_cap integer; workspace_cap integer;
+  committed_credits integer;
+  invocation_credit_bound integer;
 begin
   if auth.role() <> 'service_role' then raise exception 'service_role_required'; end if;
   if target_provider not in ('apify','firecrawl','youtube_api')
@@ -592,6 +595,13 @@ begin
   if target_job.cancellation_requested_at is not null then raise exception 'research_cancellation_requested'; end if;
   if app_private.research_control_disabled(target_job.workspace_id, target_provider) then raise exception 'research_provider_disabled'; end if;
 
+  -- This row lock serializes the approved budget across retries and concurrent starts.
+  select * into reservation from public.research_credit_reservations
+    where research_run_id = target_job.research_run_id for update;
+  if not found or reservation.state <> 'reserved' then
+    raise exception 'research_approval_budget_exhausted';
+  end if;
+
   select * into existing from public.provider_invocations
     where workspace_id = target_job.workspace_id and idempotency_key = request_idempotency_key;
   if found then
@@ -599,6 +609,20 @@ begin
       or existing.operation <> target_operation or existing.requested_units <> target_requested_units
       then raise exception 'provider_invocation_idempotency_conflict'; end if;
     return jsonb_build_object('id', existing.id, 'state', existing.state, 'created', false);
+  end if;
+
+  invocation_credit_bound := pg_catalog.ceil(target_requested_units / 5.0)::integer
+    * case when target_job.payload->>'mode' = 'deep' then 2 else 1 end;
+  select coalesce(sum(
+    case when state = 'started'
+      then pg_catalog.ceil(requested_units / 5.0)::integer
+        * case when target_job.payload->>'mode' = 'deep' then 2 else 1 end
+      else coalesce(credits, 0)
+    end
+  ), 0)::integer into committed_credits
+  from public.provider_invocations where job_id = target_job.id;
+  if committed_credits + invocation_credit_bound > reservation.estimated_credits then
+    raise exception 'research_approval_budget_exhausted';
   end if;
 
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('provider-cap:global', 0));
@@ -632,7 +656,7 @@ create or replace function public.finish_provider_invocation(
   target_credits integer default 0, target_provider_cost_usd numeric default null,
   target_error_code text default null, safe_metadata jsonb default '{}'::jsonb
 ) returns void language plpgsql security definer set search_path = '' as $$
-declare target_invocation public.provider_invocations;
+declare target_invocation public.provider_invocations; target_job public.jobs; invocation_credit_bound integer;
 begin
   if auth.role() <> 'service_role' then raise exception 'service_role_required'; end if;
   if target_state not in ('succeeded','failed','cancelled') or target_actual_units not between 0 and 25
@@ -641,6 +665,14 @@ begin
     then raise exception 'invalid_invocation_result'; end if;
   select * into target_invocation from public.provider_invocations where id = target_invocation_id for update;
   if not found then raise exception 'provider_invocation_not_found'; end if;
+  select * into target_job from public.jobs where id = target_invocation.job_id;
+  if not found then raise exception 'provider_invocation_job_not_found'; end if;
+  invocation_credit_bound := pg_catalog.ceil(target_invocation.requested_units / 5.0)::integer
+    * case when target_job.payload->>'mode' = 'deep' then 2 else 1 end;
+  if target_actual_units > target_invocation.requested_units
+    or target_credits > invocation_credit_bound then
+    raise exception 'provider_invocation_approved_bound_exceeded';
+  end if;
   if target_invocation.state <> 'started' then
     if target_invocation.state = target_state and target_invocation.actual_units = target_actual_units
       and target_invocation.credits = target_credits then return; end if;
