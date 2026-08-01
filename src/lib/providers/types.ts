@@ -13,3 +13,10 @@ export interface ResearchProvider {
   isConfigured(): boolean;
   research(query: string, limit: number): Promise<ResearchSource[]>;
 }
+
+export class ProviderError extends Error {
+  constructor(public readonly code: string, public readonly retryable: boolean) {
+    super(code);
+    this.name = "ProviderError";
+  }
+}

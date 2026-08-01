@@ -1,18 +1,21 @@
 import { NextResponse } from "next/server";
 import { researchRequestSchema } from "@/lib/schemas";
-import { runResearch } from "@/lib/research/orchestrator";
+import { researchJobRepository } from "@/lib/research/repository";
 
 export async function POST(request: Request) {
-  const parsed = researchRequestSchema.safeParse(await request.json());
+  const body = await request.json().catch(() => null);
+  const parsed = researchRequestSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid research request", issues: parsed.error.issues }, { status: 400 });
   try {
-    const sources = await runResearch(parsed.data.prompt, parsed.data.sources);
+    const run = await researchJobRepository().createOrGet(parsed.data);
     return NextResponse.json({
-      runId: crypto.randomUUID(), state: "awaiting_approval", sourceCount: sources.length, sources,
-      message: `I analysed ${sources.length} source${sources.length === 1 ? "" : "s"}. The research plan and estimated spend are waiting for your approval before I generate the final package.`,
-    });
+      runId: run.id, approvalId: run.approvalId, correlationId: run.correlationId,
+      state: run.state, created: run.created, plan: run.plan,
+      message: `Research is capped at ${run.plan.maxSources} sources and an estimated ${run.plan.estimatedCredits} credits. Explicit approval is required before it is queued.`,
+    }, { status: run.created ? 201 : 200 });
   } catch (error) {
-    console.error("research_failed", error);
-    return NextResponse.json({ error: "Research provider failed safely; no approval was bypassed." }, { status: 502 });
+    const code = error instanceof Error ? error.message : "research_run_failed";
+    const status = code === "authentication_required" ? 401 : code === "workspace_required" ? 400 : 409;
+    return NextResponse.json({ error: code }, { status });
   }
 }

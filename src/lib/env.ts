@@ -10,6 +10,7 @@ const privateSchema = z.object({
   APIFY_API_TOKEN: z.string().min(1).optional(),
   APIFY_YOUTUBE_ACTOR_ID: z.string().default("streamers/youtube-scraper"),
   MAX_RESEARCH_SOURCES: z.coerce.number().int().positive().max(100).default(25),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 });
 
 export function serverEnv() { return privateSchema.parse(process.env); }

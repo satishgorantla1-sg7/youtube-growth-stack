@@ -93,7 +93,7 @@ export function GrowthWorkspace() {
       const response = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: clean, mode: "quick", sources: ["youtube", "web"] }),
+        body: JSON.stringify({ prompt: clean, mode: "quick", sources: ["youtube", "web"], idempotencyKey: crypto.randomUUID() }),
       });
       const result = (await response.json()) as { message?: string };
       const reply = result.message ?? "I queued the research. I’ll bring the evidence and draft to your approval queue.";
