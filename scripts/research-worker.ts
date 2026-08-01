@@ -1,7 +1,8 @@
 import { runProductionWorkerOnce } from "../src/lib/research/worker";
+import { parseResearchWorkerPollMs } from "../src/lib/research/worker-config";
 
 const workerId = process.env.RESEARCH_WORKER_ID ?? `research-${process.pid}`;
-const pollMs = Math.min(Math.max(Number(process.env.RESEARCH_WORKER_POLL_MS ?? 2_000), 250), 30_000);
+const pollMs = parseResearchWorkerPollMs(process.env.RESEARCH_WORKER_POLL_MS);
 let stopping = false;
 
 process.on("SIGINT", () => { stopping = true; });
