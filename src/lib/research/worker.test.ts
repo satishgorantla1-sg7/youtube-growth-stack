@@ -62,6 +62,17 @@ describe("research safety worker", () => {
     expect(repo.fail).toHaveBeenCalledWith(job, "research_provider_disabled", true);
   });
 
+  it("does not retry when the approved research budget is exhausted", async () => {
+    const repo = repository({
+      beginProviderInvocation: vi.fn(async () => { throw new Error("research_approval_budget_exhausted"); }),
+    });
+    const execute = vi.fn(async () => [source("youtube")]);
+
+    await expect(runWorkerOnce(repo, "worker", execute)).resolves.toBe("dead_letter");
+    expect(execute).not.toHaveBeenCalled();
+    expect(repo.fail).toHaveBeenCalledWith(job, "research_approval_budget_exhausted", false);
+  });
+
   it("acknowledges cancellation before starting a paid invocation", async () => {
     const repo = repository({ cancellationRequested: vi.fn(async () => true) });
     const execute = vi.fn(async () => [source("youtube")]);
