@@ -118,6 +118,11 @@ button { color: inherit; }
 .conversation-approval-status svg { flex: 0 0 auto; }
 .conversation-approval-status .lucide-loader-circle { animation: spin 1s linear infinite; }
 .message .conversation-approval-error { margin-top: 9px; padding: 8px 9px; border: 1px solid color-mix(in oklch, var(--destructive) 35%, var(--border)); border-radius: 8px; color: var(--destructive); background: color-mix(in oklch, var(--destructive) 7%, var(--card)); }
+.conversation-evidence { display: grid; gap: 7px; margin: 11px 0 0; padding: 0; list-style: none; }
+.conversation-evidence li { display: grid; gap: 2px; padding-top: 7px; border-top: 1px solid var(--border); }
+.conversation-evidence span { color: var(--muted-foreground); font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.conversation-evidence a { overflow: hidden; color: var(--foreground); font-size: 10px; font-weight: 700; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-evidence a:hover { color: var(--primary); }
 .thinking { display: flex; align-items: center; gap: 7px; margin-left: 42px; color: var(--muted-foreground); font-size: 10px; }
 .thinking svg { animation: spin 1s linear infinite; }
 .composer { margin: 14px 20px 0; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: 0 14px 30px -25px black; }

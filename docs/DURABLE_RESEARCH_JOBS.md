@@ -6,28 +6,46 @@ Workspace owners, admins, and editors may create a research plan. Viewers are re
 
 Unauthorized role transitions return stable `research_create_forbidden` or `research_approval_forbidden` errors without disclosing another workspace. These checks live inside the security-definer RPC boundary; route handlers remain provider-free.
 
-## Run a worker
+## Production execution
 
-Apply migrations through `202608010005_research_role_authorization.sql`, then set server-only `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and whichever provider keys the deployment is allowed to spend. Do not expose the service-role key to a browser.
+Apply all Supabase migrations, then configure these server-only Production variables in Vercel:
+
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `APIFY_API_TOKEN`
+- `FIRECRAWL_API_KEY`
+- optional `APIFY_YOUTUBE_ACTOR_ID` and `RESEARCH_WORKER_ID`
+
+Do not expose any of them with a `NEXT_PUBLIC_` prefix.
+
+After an owner or admin approves a run, the route returns immediately and schedules one bounded background dispatch with Next.js `after()`. The authenticated `GET /api/research/[runId]` status route also schedules a dispatch while a run remains queued. This second trigger is intentional recovery: leases prevent duplicate provider work, while normal status polling can restart a job after an interrupted function invocation.
+
+The worker leases one approved job at a time for 180 seconds, carries its correlation ID through events and source provenance, and acknowledges only with the matching lease token. Apify and Firecrawl run in parallel with 60-second and 30-second request timeouts. Retryable failures use exponential backoff capped at five minutes. The third failed attempt and every non-retryable failure enter `dead_letter`. An expired lease may be reclaimed.
+
+Vercel Hobby cron is not the primary runner because its minimum interval is once per day. A higher-plan cron or an external long-running worker can be added later as a queue-age safety net without changing the lease contract. Local operators can still run the same consumer:
 
 ```bash
 npm run worker:research
 ```
 
-The worker leases one approved job at a time for 60 seconds, carries its correlation ID through events and source provenance, and acknowledges only with the matching lease token. Retryable failures use exponential backoff capped at five minutes. The third failed attempt and every non-retryable failure enter `dead_letter`. An expired lease may be reclaimed. Demo mode and tests use deterministic evidence and never call a paid provider.
+Demo mode implements the same approval and worker state machine in memory, uses deterministic evidence, and never calls a paid provider.
 
-The process handles `SIGINT`/`SIGTERM` between iterations. Poll intervals are clamped to 250–30,000 ms and non-finite values fall back to 2,000 ms. Deploy it as a continuously running, single-concurrency process initially. Horizontal replicas are safe because leasing uses `FOR UPDATE SKIP LOCKED`; still cap replicas to the workspace/provider quotas.
+## Provider contracts
 
-## Deployment work remaining
+- Apify uses `streamers/youtube-scraper` by default. A YouTube URL is sent as `startUrls`; other prompts use `searchQueries`. Results are capped at 25 and normalized to the internal evidence contract.
+- Firecrawl uses `POST /v2/search`, explicitly requests the `web` source and Markdown content, and caps results at 25.
+- Successful but malformed responses fail closed. Provider tokens remain in Authorization headers and are never included in URLs or logs.
+- Connected mode does not silently fall back to demo evidence. Missing worker or provider configuration leaves the approved job safely queued and reports configuration required to the user.
 
-- Choose a long-running host and inject secrets from its secret manager.
-- Apply the migration in staging, run a two-tenant RLS suite, and exercise lease expiry against the hosted Postgres version.
-- Add provider-specific quota/concurrency controls and usage-ledger reconciliation before enabling paid credentials.
-- Add metrics/alerts for queue age, retry rate, lease loss, and dead-letter count, plus an operator replay workflow that requires a new approval when scope or cost changes.
-- Configure health checks and graceful termination longer than the 60-second lease, or add lease renewal for tasks that can exceed it.
+## Operations and risk
+
+- Watch queue age, retry rate, lease loss, provider rate limits, and dead-letter count.
+- Set Vercel function duration to at least 120 seconds; the database lease is intentionally longer than either provider timeout.
+- Add workspace/provider concurrency quotas and usage-ledger reconciliation before broad paid rollout.
+- Replaying a dead-letter job requires an operator workflow; any broader scope or higher cost requires a new approval.
+- Status responses are authenticated and protected by workspace RLS. They return normalized source metadata, not service credentials or raw vendor responses.
 
 ## Migration and rollback
 
-The migration adds nullable/defaulted columns, indexes, one event table, and functions. Table metadata locks and index builds are the main rollout risk; on a large production table, schedule a quiet window or convert indexes to a separately managed concurrent operation. Existing rows receive generated correlation IDs and safe source defaults. No existing migration is rewritten.
+This slice does not add or rewrite a migration. It consumes the existing `lease_research_job`, `ack_research_job`, and `fail_research_job` RPCs and existing RLS-protected `research_sources` records.
 
-Rollback the application first so old code ignores the new contract. Functions, grants, policies, indexes, event table, and added columns can then be removed in a new forward migration if necessary. Completed provider calls are not reversible; retain `job_events`, `audit_events`, and normalized provenance for incident review.
+Rollback by reverting the web dispatch and status UI. Queued jobs remain durable and can still be processed with `npm run worker:research`. Completed provider calls are not reversible; retain `job_events`, `audit_events`, and normalized provenance for incident review.

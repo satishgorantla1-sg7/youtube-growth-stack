@@ -11,6 +11,7 @@ const privateSchema = z.object({
   APIFY_YOUTUBE_ACTOR_ID: z.string().default("streamers/youtube-scraper"),
   MAX_RESEARCH_SOURCES: z.coerce.number().int().positive().max(100).default(25),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  RESEARCH_WORKER_ID: z.string().min(1).max(80).default("research-vercel"),
 });
 
 export function serverEnv() { return privateSchema.parse(process.env); }

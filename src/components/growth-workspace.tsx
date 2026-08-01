@@ -31,14 +31,24 @@ import {
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
-type ApprovalState = "pending" | "submitting" | "queued" | "cancelled" | "error";
+type ApprovalState = "pending" | "submitting" | "queued" | "configuration_required" | "running" | "completed" | "failed" | "cancelled" | "error";
+
+type ResearchEvidence = {
+  provider: "apify" | "firecrawl" | "demo";
+  type: "youtube" | "web";
+  title: string;
+  url: string;
+  capturedAt: string;
+};
 
 type ResearchApproval = {
   approvalId: string;
+  runId: string;
   prompt: string;
   maxSources: number;
   estimatedCredits: number;
   status: ApprovalState;
+  sources?: ResearchEvidence[];
   error?: string;
 };
 
@@ -66,6 +76,7 @@ function recordingFilename(mimeType: string) {
 }
 
 type ResearchResponse = {
+  runId?: string;
   approvalId?: string;
   state?: string;
   message?: string;
@@ -77,7 +88,23 @@ type ResearchResponse = {
 };
 
 type ApprovalResponse = {
+  runId?: string;
   state?: "queued" | "cancelled";
+  execution?: {
+    state?: "configuration_required" | "idle";
+    missing?: Array<"apify" | "firecrawl" | "worker">;
+  };
+  error?: string;
+};
+
+type ResearchStatusResponse = {
+  state?: "queued" | "running" | "completed" | "failed" | "cancelled";
+  errorCode?: string | null;
+  execution?: {
+    state?: "configuration_required" | "idle" | "completed" | "queued" | "dead_letter";
+    missing?: Array<"apify" | "firecrawl" | "worker">;
+  };
+  sources?: ResearchEvidence[];
   error?: string;
 };
 
@@ -127,6 +154,7 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
   const replyAudio = useRef<HTMLAudioElement | null>(null);
   const speechRequest = useRef<AbortController | null>(null);
   const replyAudioUrl = useRef<string | null>(null);
+  const pollingRequests = useRef(new Set<AbortController>());
   const mounted = useRef(true);
 
   const releaseReplyAudio = useCallback(() => {
@@ -224,6 +252,7 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
 
   useEffect(() => {
     mounted.current = true;
+    const activePollingRequests = pollingRequests.current;
     return () => {
       mounted.current = false;
       if (recorder.current?.state === "recording") {
@@ -234,6 +263,8 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
       microphoneStream.current = null;
       speechRequest.current?.abort();
       speechRequest.current = null;
+      activePollingRequests.forEach((request) => request.abort());
+      activePollingRequests.clear();
       releaseReplyAudio();
       if (typeof window.speechSynthesis !== "undefined") window.speechSynthesis.cancel();
     };
@@ -254,8 +285,9 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
       const result = (await response.json()) as ResearchResponse;
       if (!response.ok) throw new Error(result.error ?? "research_run_failed");
       const reply = result.message ?? "I queued the research. I’ll bring the evidence and draft to your approval queue.";
-      const approval = result.state === "awaiting_approval" && result.approvalId ? {
+      const approval = result.state === "awaiting_approval" && result.approvalId && result.runId ? {
         approvalId: result.approvalId,
+        runId: result.runId,
         prompt: clean,
         maxSources: result.plan?.maxSources ?? 10,
         estimatedCredits: result.plan?.estimatedCredits ?? 0,
@@ -272,6 +304,45 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
     }
   }, [isThinking, workspaceId]);
 
+  const pollResearchRun = useCallback(async (messageId: string, runId: string) => {
+    const request = new AbortController();
+    pollingRequests.current.add(request);
+    try {
+      for (let attempt = 0; attempt < 48; attempt += 1) {
+        if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2_500));
+        if (request.signal.aborted || !mounted.current) return;
+        const response = await fetch(`/api/research/${encodeURIComponent(runId)}`, { signal: request.signal, cache: "no-store" });
+        const result = (await response.json()) as ResearchStatusResponse;
+        if (!response.ok || !result.state) throw new Error(result.error ?? "research_status_unavailable");
+        const nextStatus: ApprovalState = result.state === "queued" && result.execution?.state === "configuration_required"
+          ? "configuration_required"
+          : result.state;
+        setMessages((current) => current.map((message) => message.id === messageId && message.approval
+          ? {
+              ...message,
+              approval: {
+                ...message.approval,
+                status: nextStatus,
+                sources: result.sources ?? message.approval.sources,
+                error: result.state === "failed" ? "The research worker stopped after a provider error. No further credits will be used." : undefined,
+              },
+            }
+          : message));
+        if (["completed", "failed", "cancelled"].includes(result.state)) return;
+      }
+      throw new Error("research_status_timeout");
+    } catch (error) {
+      if (request.signal.aborted || !mounted.current) return;
+      setMessages((current) => current.map((message) => message.id === messageId && message.approval
+        ? { ...message, approval: { ...message.approval, status: "error", error: error instanceof Error && error.message === "research_status_timeout"
+          ? "Research is still queued. Refresh later to check its progress."
+          : "I couldn’t refresh the research status. The queued job is still safely stored." } }
+        : message));
+    } finally {
+      pollingRequests.current.delete(request);
+    }
+  }, []);
+
   const decideApproval = useCallback(async (messageId: string, approvalId: string, decision: "approved" | "rejected") => {
     setMessages((current) => current.map((message) => message.id === messageId && message.approval
       ? { ...message, approval: { ...message.approval, status: "submitting", error: undefined } }
@@ -284,15 +355,19 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
       });
       const result = (await response.json()) as ApprovalResponse;
       if (!response.ok || !result.state) throw new Error(result.error ?? "approval_transition_failed");
+      const nextStatus: ApprovalState = result.state === "queued" && result.execution?.state === "configuration_required"
+        ? "configuration_required"
+        : result.state === "queued" ? "queued" : "cancelled";
       setMessages((current) => current.map((message) => message.id === messageId && message.approval
-        ? { ...message, approval: { ...message.approval, status: result.state === "queued" ? "queued" : "cancelled", error: undefined } }
+        ? { ...message, approval: { ...message.approval, status: nextStatus, error: undefined } }
         : message));
+      if (result.state === "queued" && result.runId) void pollResearchRun(messageId, result.runId);
     } catch {
       setMessages((current) => current.map((message) => message.id === messageId && message.approval
         ? { ...message, approval: { ...message.approval, status: "error", error: "I couldn’t save your decision. Please try again." } }
         : message));
     }
-  }, []);
+  }, [pollResearchRun]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -467,9 +542,23 @@ export function GrowthWorkspace({ displayName = "Satish", workspaceName = "Perso
                         ) : null}
                         <div className="conversation-approval-status" role="status" aria-live="polite">
                           {message.approval.status === "submitting" ? <><LoaderCircle size={14} /> Saving your decision…</> : null}
-                          {message.approval.status === "queued" ? <><Check size={14} /> Approved. Research is queued.</> : null}
+                          {message.approval.status === "queued" ? <><LoaderCircle size={14} /> Approved. Starting real research…</> : null}
+                          {message.approval.status === "configuration_required" ? <><Clock3 size={14} /> Approved and safely queued. Provider setup must be completed before it can run.</> : null}
+                          {message.approval.status === "running" ? <><LoaderCircle size={14} /> Apify and Firecrawl are collecting evidence…</> : null}
+                          {message.approval.status === "completed" ? <><Check size={14} /> Research complete. {message.approval.sources?.length ?? 0} evidence sources saved.</> : null}
+                          {message.approval.status === "failed" ? "Research stopped safely after a provider error." : null}
                           {message.approval.status === "cancelled" ? "Rejected. No research was queued and no credits were used." : null}
                         </div>
+                        {message.approval.status === "completed" && message.approval.sources?.length ? (
+                          <ul className="conversation-evidence" aria-label="Research evidence">
+                            {message.approval.sources.map((source) => (
+                              <li key={`${source.provider}-${source.url}`}>
+                                <span>{source.provider === "apify" ? "YouTube · Apify" : source.provider === "firecrawl" ? "Web · Firecrawl" : "Demo evidence"}</span>
+                                <a href={source.url} target="_blank" rel="noreferrer">{source.title}</a>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
                         {message.approval.status === "error" ? <p className="conversation-approval-error" role="alert">{message.approval.error}</p> : null}
                       </section>
                     ) : null}

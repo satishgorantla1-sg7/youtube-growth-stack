@@ -9,6 +9,7 @@ export class MemoryResearchJobRepository implements ResearchJobRepository {
   private readonly runs = new Map<string, ResearchRun>();
   private readonly approvals = new Map<string, { runId: string; state: "pending" | "approved" | "rejected" }>();
   private readonly jobs = new Map<string, StoredJob>();
+  private readonly sources = new Map<string, ResearchSource[]>();
 
   async createOrGet(input: ResearchRequest): Promise<ResearchRun> {
     const existing = this.runs.get(input.idempotencyKey);
@@ -66,7 +67,7 @@ export class MemoryResearchJobRepository implements ResearchJobRepository {
   }
 
   async ack(job: ResearchJob, sources: ResearchSource[]) {
-    void sources;
+    this.sources.set(job.runId, sources);
     const stored = this.assertLease(job);
     stored.state = "completed";
     const run = [...this.runs.values()].find((candidate) => candidate.id === job.runId);
@@ -79,6 +80,17 @@ export class MemoryResearchJobRepository implements ResearchJobRepository {
     const run = [...this.runs.values()].find((candidate) => candidate.id === job.runId);
     if (run) run.state = stored.state === "queued" ? "queued" : "failed";
     return stored.state;
+  }
+
+  getStatus(runId: string) {
+    const run = [...this.runs.values()].find((candidate) => candidate.id === runId);
+    if (!run) return null;
+    return {
+      runId: run.id,
+      state: run.state,
+      prompt: run.plan.prompt,
+      sources: this.sources.get(run.id) ?? [],
+    };
   }
 
   private assertLease(job: ResearchJob): StoredJob {

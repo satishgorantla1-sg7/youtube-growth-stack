@@ -8,3 +8,7 @@ const demoRepository = new MemoryResearchJobRepository();
 export function researchJobRepository(): ResearchJobRepository {
   return hasSupabaseConfig() ? new SupabaseResearchJobRepository() : demoRepository;
 }
+
+export function demoResearchRunStatus(runId: string) {
+  return demoRepository.getStatus(runId);
+}
