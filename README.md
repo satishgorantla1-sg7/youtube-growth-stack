@@ -2,7 +2,7 @@
 
 An open-source, voice-first research and content-planning SaaS for YouTube creators. Connect a channel, ask the growth agent a question, review its evidence, and approve a complete content package: ideas, titles, thumbnail concepts, hooks, an outline, and a script.
 
-> **Current status:** foundation/MVP. Supabase identity, OpenAI voice, approval-gated jobs, on-demand Apify/Firecrawl execution, live run status, and persisted evidence are implemented. Demo mode remains credential-free. Evidence-grounded idea synthesis, YouTube OAuth, and auto-publishing are later slices.
+> **Current status:** controlled-beta foundation. Supabase identity, OpenAI voice, approval-gated jobs, bounded Apify/Firecrawl execution, research budgets, database controls, cancellation, live run status, and persisted evidence are implemented. Demo mode remains credential-free. Paid provider activation still requires hosted safety verification and separate approval; evidence-grounded idea synthesis and YouTube OAuth are later slices.
 
 ![MIT License](https://img.shields.io/badge/license-MIT-111111)
 ![Next.js](https://img.shields.io/badge/Next.js-16-111111)
@@ -19,15 +19,18 @@ flowchart TB
   VOICE --> RT[OpenAI Realtime voice]
   VOICE --> STT[GPT-4o Transcribe fallback]
   API --> APPROVAL{Human approval}
-  APPROVAL -->|approved| DISPATCH[On-demand worker dispatch]
+  APPROVAL -->|approved| SAFETY{Budget + controls}
   APPROVAL -->|rejected| UI
+  SAFETY -->|blocked| UI
+  SAFETY -->|reserved| DISPATCH[On-demand worker dispatch]
   DISPATCH --> JOBS[Durable Supabase job queue]
   UI --> STATUS[Authenticated run status]
   STATUS --> DB
   JOBS --> ORCH[Research orchestrator]
-  ORCH --> YT[YouTube Data API]
-  ORCH --> APIFY[Apify YouTube adapter]
-  ORCH --> FIRE[Firecrawl web adapter]
+  ORCH --> GUARD{Cancellation + invocation guard}
+  GUARD --> YT[YouTube Data API]
+  GUARD --> APIFY[Apify YouTube adapter]
+  GUARD --> FIRE[Firecrawl web adapter]
   ORCH --> SYNTH[Pattern and idea synthesis]
   SYNTH --> PACKAGE[Versioned content package]
   PACKAGE --> APPROVAL
@@ -192,7 +195,9 @@ To verify the same gates used by pull requests:
 npm run verify
 ```
 
-Durable research runs stop for approval before provider execution. In production, approval schedules a bounded background dispatch and the conversation polls the authenticated run-status endpoint until evidence is saved. Configure `SUPABASE_SERVICE_ROLE_KEY`, `APIFY_API_TOKEN`, and `FIRECRAWL_API_KEY` as server-only Vercel Production variables. Missing configuration leaves the job safely queued; connected mode never substitutes demo evidence.
+Durable research runs stop for approval before provider execution. Approval atomically reserves the bounded credit estimate and checks the database control plane before scheduling background dispatch. The worker checks cancellation, kill switches, and concurrency before each paid call, then reconciles safe invocation and usage metadata. Missing configuration leaves work safely stopped; connected mode never substitutes demo evidence.
+
+`GET /api/health` reports liveness and non-sensitive configuration capability separately. Even with every credential present, paid research reports `hosted_verification_required` until the operator completes the [paid research safety runbook](docs/operations/research-safety-runbook.md). Health output never authorizes activation.
 
 A continuously running worker is still available for local development or a future dedicated worker host:
 
@@ -223,7 +228,7 @@ The application stops for explicit approval before paid deep research, channel a
 
 Apify and Firecrawl availability does not grant permission to collect data. Deployers remain responsible for YouTube policies, provider terms, privacy notices, OAuth verification, deletion handling, and local law.
 
-Before enabling production credentials, read the [public-launch safety and operations checklist](docs/SAFETY.md). It distinguishes safeguards already enforced from release-blocking voice privacy, provider policy, quota, monitoring, and kill-switch work.
+Before enabling production credentials, read the [public-launch safety and operations checklist](docs/SAFETY.md) and [paid research safety runbook](docs/operations/research-safety-runbook.md). They distinguish safeguards present in the repository from hosted verification, monitoring, provider-policy, privacy, and activation gates.
 
 ## Delivery roadmap
 
