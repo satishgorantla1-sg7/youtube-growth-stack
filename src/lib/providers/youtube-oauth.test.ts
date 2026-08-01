@@ -10,6 +10,7 @@ describe("GoogleYouTubeOAuthProvider", () => {
     expect(url.origin + url.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
     expect(url.searchParams.get("scope")).toBe(YOUTUBE_READONLY_SCOPE);
     expect(url.searchParams.get("access_type")).toBe("offline");
+    expect(url.searchParams.get("include_granted_scopes")).toBeNull();
     expect(url.searchParams.get("prompt")).toBe("consent");
     expect(url.searchParams.get("state")).toBe("opaque-state");
     expect(url.searchParams.get("client_secret")).toBeNull();

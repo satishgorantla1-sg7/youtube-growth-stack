@@ -83,7 +83,6 @@ export class GoogleYouTubeOAuthProvider {
       response_type: "code",
       scope: YOUTUBE_READONLY_SCOPE,
       access_type: "offline",
-      include_granted_scopes: "true",
       prompt: "consent",
       state,
     }).toString();
