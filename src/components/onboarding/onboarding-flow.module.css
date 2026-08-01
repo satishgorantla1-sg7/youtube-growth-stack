@@ -102,3 +102,36 @@
   .consentBox button { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+/* Public onboarding copy keeps an accessible reading size while hierarchy
+   comes from weight, colour, spacing, and type style rather than tiny text. */
+.secure,
+.eyebrow,
+.steps li > span,
+.steps small,
+.cardFooter > span,
+.infoRow,
+.summary span,
+.demoNote { font-size: 12px; }
+
+.steps strong,
+.promise strong,
+.stepHeading > p:last-child,
+.complete > p:not(.eyebrow),
+.fields label,
+.fields input,
+.primaryButton,
+.secondaryButton,
+.backButton,
+.statusCard strong,
+.consentBox strong,
+.consentBox small,
+.choiceGrid h3,
+.choiceGrid p,
+.notice { font-size: 14px; }
+
+.promise small { font-size: 14px; line-height: 1.55; }
+.statusCard small { font-size: 13px; line-height: 1.55; }
+.intro > p:not(.eyebrow) { font-size: 14px; }
+.primaryButton, .secondaryButton, .backButton { min-height: 44px; }
+.statusCard { min-height: 94px; }
