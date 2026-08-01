@@ -37,6 +37,8 @@ flowchart TB
 
 ## User experience
 
+The dedicated `/onboarding` route guides a creator through profile and workspace setup, a demo-safe channel connection, an optional microphone check, and completion. The interface asks for explicit confirmation before it would open Google OAuth or request browser microphone access. Demo mode uses a typed channel adapter and does not request or store OAuth tokens; every voice action has a full keyboard and text alternative.
+
 ```mermaid
 journey
   title From spoken question to approved content package
