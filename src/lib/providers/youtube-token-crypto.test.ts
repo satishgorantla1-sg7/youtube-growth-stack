@@ -4,6 +4,14 @@ import { VersionedTokenCipher } from "./youtube-token-crypto";
 
 const payload = { refreshToken: "refresh-secret", accessToken: "access-secret", accessTokenExpiresAt: "2026-08-02T01:00:00.000Z" };
 
+function tamperCiphertext(envelope: string): string {
+  const parts = envelope.split(".");
+  const ciphertext = Buffer.from(parts.at(-1)!, "base64url");
+  ciphertext[0] ^= 1;
+  parts[parts.length - 1] = ciphertext.toString("base64url");
+  return parts.join(".");
+}
+
 describe("VersionedTokenCipher", () => {
   it("round trips an authenticated envelope without plaintext credentials", () => {
     const cipher = new VersionedTokenCipher(new Map([["v1", randomBytes(32)]]), "v1");
@@ -26,7 +34,25 @@ describe("VersionedTokenCipher", () => {
     const key = randomBytes(32);
     const cipher = new VersionedTokenCipher(new Map([["v1", key]]), "v1");
     const envelope = cipher.encrypt(payload);
-    expect(() => cipher.decrypt(`${envelope.slice(0, -1)}A`)).toThrow("token_decryption_failed");
+    expect(() => cipher.decrypt(tamperCiphertext(envelope))).toThrow("token_decryption_failed");
     expect(() => new VersionedTokenCipher(new Map([["v2", randomBytes(32)]]), "v2").decrypt(envelope)).toThrow("unknown_token_key_version");
+  });
+
+  it("round trips an authenticated sync cursor without exposing its page token", () => {
+    const cipher = new VersionedTokenCipher(new Map([["v1", randomBytes(32)]]), "v1");
+    const cursor = cipher.encryptPageToken("provider-page-token");
+    expect(cursor).toEqual({
+      encryptedPageToken: expect.stringMatching(/^ygc1\.v1\./),
+      pageTokenVersion: 1,
+    });
+    expect(cursor.encryptedPageToken).not.toContain("provider-page-token");
+    expect(cipher.decryptPageToken(cursor.encryptedPageToken, cursor.pageTokenVersion)).toBe("provider-page-token");
+  });
+
+  it("rejects cursor tampering and unsupported cursor formats", () => {
+    const cipher = new VersionedTokenCipher(new Map([["v1", randomBytes(32)]]), "v1");
+    const cursor = cipher.encryptPageToken("provider-page-token");
+    expect(() => cipher.decryptPageToken(tamperCiphertext(cursor.encryptedPageToken), 1)).toThrow("youtube_cursor_decryption_failed");
+    expect(() => cipher.decryptPageToken(cursor.encryptedPageToken, 2)).toThrow("unknown_youtube_cursor_format");
   });
 });

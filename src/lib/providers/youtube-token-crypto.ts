@@ -20,6 +20,32 @@ export class VersionedTokenCipher {
     const ciphertext = Buffer.concat([cipher.update(JSON.stringify(validated), "utf8"), cipher.final()]);
     return ["ygs1", this.activeVersion, iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), ciphertext.toString("base64url")].join(".");
   }
+  encryptPageToken(pageToken: string): { encryptedPageToken: string; pageTokenVersion: 1 } {
+    if (!pageToken || pageToken.length > 4_096) throw new Error("invalid_youtube_page_token");
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", this.keys.get(this.activeVersion)!, iv);
+    cipher.setAAD(Buffer.from(`youtube-sync-cursor:${this.activeVersion}`, "utf8"));
+    const ciphertext = Buffer.concat([cipher.update(pageToken, "utf8"), cipher.final()]);
+    return {
+      encryptedPageToken: ["ygc1", this.activeVersion, iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), ciphertext.toString("base64url")].join("."),
+      pageTokenVersion: 1,
+    };
+  }
+  decryptPageToken(envelope: string, pageTokenVersion: number): string {
+    if (pageTokenVersion !== 1) throw new Error("unknown_youtube_cursor_format");
+    const [format, version, ivValue, tagValue, ciphertextValue, extra] = envelope.split(".");
+    if (format !== "ygc1" || !version || !ivValue || !tagValue || !ciphertextValue || extra) throw new Error("invalid_youtube_cursor_envelope");
+    const key = this.keys.get(version);
+    if (!key) throw new Error("unknown_token_key_version");
+    try {
+      const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivValue, "base64url"));
+      decipher.setAAD(Buffer.from(`youtube-sync-cursor:${version}`, "utf8"));
+      decipher.setAuthTag(Buffer.from(tagValue, "base64url"));
+      const pageToken = Buffer.concat([decipher.update(Buffer.from(ciphertextValue, "base64url")), decipher.final()]).toString("utf8");
+      if (!pageToken || pageToken.length > 4_096) throw new Error("invalid_youtube_page_token");
+      return pageToken;
+    } catch { throw new Error("youtube_cursor_decryption_failed"); }
+  }
   decrypt(envelope: string): YouTubeTokenPayload {
     const [format, version, ivValue, tagValue, ciphertextValue, extra] = envelope.split(".");
     if (format !== "ygs1" || !version || !ivValue || !tagValue || !ciphertextValue || extra) throw new Error("invalid_token_envelope");

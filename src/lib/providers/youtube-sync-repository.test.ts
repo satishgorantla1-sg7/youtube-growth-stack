@@ -38,12 +38,13 @@ describe("SupabaseYouTubeSyncRepository", () => {
         video: { externalId: "video-one", channelExternalId: "UC-one", title: "Video", description: null, thumbnailUrl: null, publishedAt: null, durationSeconds: 60, privacyStatus: "public", liveBroadcastContent: "none", etag: "v1" },
         snapshot: { videoExternalId: "video-one", viewCount: 4, likeCount: 1, commentCount: 0, capturedAt: "2026-08-01T00:00:00Z", sourceEtag: "v1" },
       }],
-    });
+    }, { encryptedPageToken: "cursor-envelope", pageTokenVersion: 1, cursorInitialized: true });
     expect(progress).toEqual({ pagesFetched: 1, itemsFetched: 2 });
     expect(rpc).toHaveBeenCalledWith("persist_youtube_sync_page", expect.objectContaining({
       target_sync_run_id: running.id, target_lease_token: running.leaseToken,
       channel_rows: [expect.objectContaining({ external_id: "UC-one", subscriber_count: 1 })],
       video_rows: [expect.objectContaining({ external_id: "video-one", view_count: 4 })],
+      target_encrypted_page_token: "cursor-envelope", target_page_token_version: 1, target_cursor_initialized: true,
     }));
   });
 
@@ -59,7 +60,7 @@ describe("SupabaseYouTubeSyncRepository", () => {
     const rpc = vi.fn();
     const repository = new SupabaseYouTubeSyncRepository({ rpc } as YouTubeSyncRpcClient);
     const queued = { ...running, state: "queued" as const, leaseToken: undefined };
-    await expect(repository.persistPage(queued, { channels: [], videos: [] })).rejects.toThrow("youtube_sync_lease_required");
+    await expect(repository.persistPage(queued, { channels: [], videos: [] }, { encryptedPageToken: null, pageTokenVersion: null, cursorInitialized: true })).rejects.toThrow("youtube_sync_lease_required");
     await expect(repository.finish(queued, { state: "failed", pagesFetched: 0, itemsFetched: 0 })).rejects.toThrow("youtube_sync_lease_required");
     expect(rpc).not.toHaveBeenCalled();
   });

@@ -89,13 +89,14 @@ export class YouTubeReadOnlyProvider {
     if (!accessToken.trim()) throw new YouTubeSyncError("youtube_access_token_required", false);
   }
 
-  async listManagedChannels(input?: { pageToken?: string; bounds?: Partial<YouTubeSyncBounds>; requestKey?: string }): Promise<YouTubePage<{
+  async listManagedChannels(input?: { channelId?: string; pageToken?: string; bounds?: Partial<YouTubeSyncBounds>; requestKey?: string }): Promise<YouTubePage<{
     channel: YouTubeChannel; snapshot: YouTubeChannelSnapshot;
   }>> {
     const bounds = bounded(input?.bounds);
     const url = new URL(`${this.baseUrl}/channels`);
     url.searchParams.set("part", "id,snippet,contentDetails,statistics");
-    url.searchParams.set("mine", "true");
+    if (input?.channelId) url.searchParams.set("id", input.channelId);
+    else url.searchParams.set("mine", "true");
     url.searchParams.set("maxResults", String(Math.min(bounds.maxItems, 50)));
     if (input?.pageToken) url.searchParams.set("pageToken", input.pageToken);
     const response = await this.request(url, bounds);

@@ -25,9 +25,37 @@ const syncSchema = z.object({
 
 export type YouTubeSyncRun = z.infer<typeof syncSchema>;
 
+const syncLeaseSchema = syncSchema.extend({
+  state: z.literal("running"),
+  leaseToken: z.string().uuid(),
+  attemptCount: z.number().int().min(1).max(5),
+  encryptedCredentials: z.string().min(1),
+  credentialVersion: z.string().min(1).max(80),
+  channelExternalId: z.string().min(1).max(128),
+  uploadsPlaylistId: z.string().min(1).max(128),
+  encryptedPageToken: z.string().min(1).nullable(),
+  pageTokenVersion: z.number().int().positive().nullable(),
+  cursorInitialized: z.boolean(),
+}).superRefine((value, context) => {
+  if ((value.encryptedPageToken === null) !== (value.pageTokenVersion === null)) {
+    context.addIssue({ code: "custom", message: "youtube_sync_cursor_invalid" });
+  }
+  if (!value.cursorInitialized && value.encryptedPageToken !== null) {
+    context.addIssue({ code: "custom", message: "youtube_sync_cursor_invalid" });
+  }
+});
+
+export type YouTubeSyncLease = z.infer<typeof syncLeaseSchema>;
+
 export type YouTubeSyncPage = {
   channels: Array<{ channel: YouTubeChannel; snapshot: YouTubeChannelSnapshot }>;
   videos: Array<{ video: YouTubeVideo; snapshot: YouTubeVideoSnapshot }>;
+};
+
+export type YouTubeSyncCursorWrite = {
+  encryptedPageToken: string | null;
+  pageTokenVersion: number | null;
+  cursorInitialized: true;
 };
 
 type RpcResult = Promise<{ data: unknown; error: { message: string } | null }>;
@@ -38,8 +66,8 @@ export interface YouTubeSyncRepository {
     workspaceId: string; connectionId: string; channelId?: string;
     idempotencyKey: string; maxPages: number; maxItems: number;
   }): Promise<YouTubeSyncRun>;
-  lease(workerId: string, leaseSeconds: number): Promise<YouTubeSyncRun | null>;
-  persistPage(run: YouTubeSyncRun, page: YouTubeSyncPage): Promise<{ pagesFetched: number; itemsFetched: number }>;
+  lease(workerId: string, leaseSeconds: number): Promise<YouTubeSyncLease | null>;
+  persistPage(run: YouTubeSyncRun, page: YouTubeSyncPage, cursor: YouTubeSyncCursorWrite): Promise<{ pagesFetched: number; itemsFetched: number }>;
   recordQuota(run: YouTubeSyncRun, charge: YouTubeQuotaCharge): Promise<boolean>;
   finish(run: YouTubeSyncRun, result: {
     state: "completed" | "failed" | "cancelled"; pagesFetched: number; itemsFetched: number; errorCode?: string;
@@ -111,16 +139,19 @@ export class SupabaseYouTubeSyncRepository implements YouTubeSyncRepository {
     return syncSchema.parse(data);
   }
 
-  async lease(workerId: string, leaseSeconds: number): Promise<YouTubeSyncRun | null> {
+  async lease(workerId: string, leaseSeconds: number): Promise<YouTubeSyncLease | null> {
     const { data, error } = await this.client.rpc("lease_youtube_sync", { worker_id: workerId, lease_seconds: leaseSeconds });
     if (error) throw new Error(error.message);
-    return data === null ? null : syncSchema.parse(data);
+    return data === null ? null : syncLeaseSchema.parse(data);
   }
 
-  async persistPage(run: YouTubeSyncRun, page: YouTubeSyncPage): Promise<{ pagesFetched: number; itemsFetched: number }> {
+  async persistPage(run: YouTubeSyncRun, page: YouTubeSyncPage, cursor: YouTubeSyncCursorWrite): Promise<{ pagesFetched: number; itemsFetched: number }> {
     const { data, error } = await this.client.rpc("persist_youtube_sync_page", {
       target_sync_run_id: run.id, target_lease_token: requireLease(run),
       channel_rows: page.channels.map(channelRow), video_rows: page.videos.map(videoRow),
+      target_encrypted_page_token: cursor.encryptedPageToken,
+      target_page_token_version: cursor.pageTokenVersion,
+      target_cursor_initialized: cursor.cursorInitialized,
     });
     if (error) throw new Error(error.message);
     return progressSchema.parse(data);

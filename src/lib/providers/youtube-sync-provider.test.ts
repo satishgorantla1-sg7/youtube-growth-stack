@@ -39,6 +39,19 @@ describe("YouTubeReadOnlyProvider", () => {
     expect(result.nextPageToken).toBe("another-page");
   });
 
+  it("reads only the selected channel when an external id is supplied", async () => {
+    const fetcher = vi.fn(async (url: URL) => {
+      expect(url.searchParams.get("id")).toBe("UC-selected");
+      expect(url.searchParams.has("mine")).toBe(false);
+      return jsonResponse({ items: [{
+        id: "UC-selected", snippet: { title: "Selected" },
+        contentDetails: { relatedPlaylists: { uploads: "UU-selected" } },
+      }] });
+    });
+    const result = await new YouTubeReadOnlyProvider("token", fetcher).listManagedChannels({ channelId: "UC-selected" });
+    expect(result.items.map((item) => item.channel.externalId)).toEqual(["UC-selected"]);
+  });
+
   it("deduplicates and normalizes a bounded video batch", async () => {
     const fetcher = vi.fn(async (url: URL) => {
       expect(url.searchParams.get("id")).toBe("video-1,video-2");
