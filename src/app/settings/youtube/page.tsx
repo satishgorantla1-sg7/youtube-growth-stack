@@ -1,0 +1,37 @@
+import { PageStateNotice } from "@/app/_components/workspace-page";
+import { WorkspaceShell } from "@/components/workspace";
+import { YouTubeConnectionPanel, type YouTubeChannelSummary, type YouTubeConnectionStatus } from "@/components/youtube/youtube-connection-panel";
+import { isDataError } from "@/lib/dashboard/contracts";
+import { getWorkspacePageSession } from "@/lib/dashboard/server";
+export const metadata = { title: "YouTube connection · YouTube Growth Stack" };
+export const dynamic = "force-dynamic";
+const outcomes: Record<string, { title: string; body: string; tone?: "error" | "info" }> = {
+  connected: { title: "Google authorization completed", body: "The channel connection is being verified from workspace data.", tone: "info" },
+  authentication_required: { title: "Sign in required", body: "Sign in again before connecting a YouTube channel.", tone: "error" },
+  youtube_not_configured: { title: "YouTube OAuth is not configured", body: "A server administrator must add the Google OAuth credentials.", tone: "error" },
+  youtube_consent_denied: { title: "Google consent was not granted", body: "Nothing was connected. You can try again after a new approval.", tone: "error" },
+  oauth_state_invalid: { title: "Authorization could not be verified", body: "The connection was not changed. Start again from this page.", tone: "error" },
+  oauth_state_expired: { title: "Authorization expired", body: "The connection was not changed. Start again from this page.", tone: "error" },
+  oauth_state_replayed: { title: "Authorization already used", body: "This authorization cannot be reused. Start again from this page.", tone: "error" },
+  youtube_reconnect_required: { title: "Reconnection required", body: "The previous Google authorization is no longer valid.", tone: "error" },
+  youtube_provider_unavailable: { title: "Google is temporarily unavailable", body: "No connection was changed. Try again later.", tone: "error" },
+  youtube_provider_rejected_request: { title: "Google rejected the request", body: "No connection was changed. Start again or use a different Google account.", tone: "error" },
+};
+function mapState(value: string): YouTubeChannelSummary["status"] { if (value === "connected") return "connected"; if (value === "syncing" || value === "refreshing") return "refreshing"; if (["revoked", "expired", "needs_attention"].includes(value)) return "revoked"; if (value === "quota_limited") return "quota_limited"; return "error"; }
+function overall(channels: YouTubeChannelSummary[]): YouTubeConnectionStatus { if (!channels.length) return "not_connected"; for (const state of ["revoked", "quota_limited", "refreshing", "connected"] as const) if (channels.some((channel) => channel.status === state)) return state; return "error"; }
+export default async function YouTubeSettingsPage({ searchParams }: { searchParams: Promise<{ youtube?: string }> }) {
+  const session = await getWorkspacePageSession("/settings/youtube");
+  const outcome = outcomes[(await searchParams).youtube ?? ""];
+  let status: YouTubeConnectionStatus = session.mode === "demo" ? "configuration_required" : "not_connected";
+  let channels: YouTubeChannelSummary[] = [];
+  if (session.source && session.workspaceId) {
+    const result = await session.source.channels(session.workspaceId);
+    if (isDataError(result)) status = "error";
+    else { channels = result.data.map((channel) => ({ id: channel.id, title: channel.title, handle: channel.handle, lastSyncedAt: channel.last_synced_at, status: mapState(channel.connection_state) })); status = overall(channels); }
+  }
+  return <WorkspaceShell activePath="/settings" title="YouTube connection" description="Read-only Google authorization and channel lifecycle status." displayName={session.displayName} workspaceName={session.workspaceName} signOutAction={session.signOutAction} navigationCounts={session.navigationCounts} mode={session.mode}>
+    <nav className="settings-breadcrumb" aria-label="Settings breadcrumb"><a href="/settings">Settings</a><span aria-hidden="true">/</span><span aria-current="page">YouTube</span></nav>
+    {outcome ? <PageStateNotice title={outcome.title} tone={outcome.tone ?? "neutral"}><p>{outcome.body}</p></PageStateNotice> : null}
+    <YouTubeConnectionPanel status={status} workspaceId={session.workspaceId} channels={channels} />
+  </WorkspaceShell>;
+}
