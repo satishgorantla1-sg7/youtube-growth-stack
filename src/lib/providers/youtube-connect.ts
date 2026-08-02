@@ -13,7 +13,7 @@ export type SaveYouTubeConnectionInput = {
   credentialVersion: string;
   scopes: string[];
   accessTokenExpiresAt: string;
-  channel: YouTubeOwnedChannel;
+  channels: YouTubeOwnedChannel[];
 };
 
 export interface YouTubeOAuthRepository {
@@ -57,10 +57,7 @@ export class SupabaseYouTubeOAuthRepository implements YouTubeOAuthRepository {
       target_credential_version: input.credentialVersion,
       target_scopes: input.scopes,
       target_expires_at: input.accessTokenExpiresAt,
-      target_external_id: input.channel.externalId,
-      target_title: input.channel.title,
-      target_handle: input.channel.handle,
-      target_thumbnail_url: input.channel.thumbnailUrl,
+      target_channels: input.channels,
     });
     if (result.error) throw mapRepositoryError(result.error.message);
   }
@@ -101,9 +98,9 @@ export async function completeYouTubeAuthorization(query: URLSearchParams, depen
   try {
     const tokens = await dependencies.provider.exchangeCode(code);
     if (!tokens.refreshToken) throw new YouTubeOAuthError("youtube_refresh_token_missing");
-    const channel = await dependencies.provider.ownedChannel(tokens.accessToken);
+    const channels = await dependencies.provider.ownedChannels(tokens.accessToken);
     const encryptedCredentials = dependencies.cipher.encrypt({ refreshToken: tokens.refreshToken, accessToken: tokens.accessToken, accessTokenExpiresAt: tokens.accessTokenExpiresAt });
-    await dependencies.repository.saveConnection({ workspaceId: consumed.workspaceId, oauthStateHash: hashState(state), encryptedCredentials, credentialVersion: dependencies.cipher.activeVersion, scopes: tokens.scopes, accessTokenExpiresAt: tokens.accessTokenExpiresAt, channel });
+    await dependencies.repository.saveConnection({ workspaceId: consumed.workspaceId, oauthStateHash: hashState(state), encryptedCredentials, credentialVersion: dependencies.cipher.activeVersion, scopes: tokens.scopes, accessTokenExpiresAt: tokens.accessTokenExpiresAt, channels });
     return { ok: true as const, status: 200, workspaceId: consumed.workspaceId };
   } catch (error) {
     if (error instanceof YouTubeOAuthError) return { ok: false as const, status: error.retryable ? 503 : 400, error: error.code };

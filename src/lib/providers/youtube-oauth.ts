@@ -22,7 +22,7 @@ const channelResponseSchema = z.object({
       customUrl: z.string().optional(),
       thumbnails: z.record(z.string(), z.object({ url: z.string().url() })).optional(),
     }),
-  })).min(1),
+  })).min(1).max(50),
 });
 
 export type YouTubeOAuthConfig = {
@@ -119,23 +119,24 @@ export class GoogleYouTubeOAuthProvider {
     return { ...tokens, refreshToken };
   }
 
-  async ownedChannel(accessToken: string): Promise<YouTubeOwnedChannel> {
+  async ownedChannels(accessToken: string): Promise<YouTubeOwnedChannel[]> {
     const url = new URL(YOUTUBE_CHANNELS_URL);
-    url.search = new URLSearchParams({ part: "snippet", mine: "true", maxResults: "1" }).toString();
+    url.search = new URLSearchParams({ part: "snippet", mine: "true", maxResults: "50" }).toString();
     const response = await this.request(url, {
       headers: { authorization: `Bearer ${accessToken}` },
     });
     if (!response.ok) throw await this.safeProviderError(response);
     const parsed = channelResponseSchema.safeParse(await response.json().catch(() => null));
     if (!parsed.success) throw new YouTubeOAuthError("youtube_channel_response_invalid");
-    const channel = parsed.data.items[0];
-    const thumbnails = Object.values(channel.snippet.thumbnails ?? {});
-    return {
-      externalId: channel.id,
-      title: channel.snippet.title,
-      handle: channel.snippet.customUrl ?? null,
-      thumbnailUrl: thumbnails.at(-1)?.url ?? null,
-    };
+    return parsed.data.items.map((channel) => {
+      const thumbnails = Object.values(channel.snippet.thumbnails ?? {});
+      return {
+        externalId: channel.id,
+        title: channel.snippet.title,
+        handle: channel.snippet.customUrl ?? null,
+        thumbnailUrl: thumbnails.at(-1)?.url ?? null,
+      };
+    });
   }
 
   async revoke(token: string): Promise<void> {

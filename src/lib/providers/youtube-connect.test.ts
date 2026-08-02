@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { beginYouTubeAuthorization, completeYouTubeAuthorization, type YouTubeOAuthRepository } from "./youtube-connect";
+import { beginYouTubeAuthorization, completeYouTubeAuthorization, SupabaseYouTubeOAuthRepository, type YouTubeOAuthRepository } from "./youtube-connect";
 import { GoogleYouTubeOAuthProvider, YOUTUBE_READONLY_SCOPE } from "./youtube-oauth";
 import { VersionedTokenCipher } from "./youtube-token-crypto";
 
@@ -50,10 +50,13 @@ describe("YouTube OAuth connection", () => {
     expect(result).toMatchObject({ ok: false, status: 403, error: "oauth_state_user_mismatch" });
   });
 
-  it("stores only encrypted credentials after resolving the owned channel", async () => {
+  it("stores only encrypted credentials and a safe array after resolving owned channels", async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "access-secret", refresh_token: "refresh-secret", expires_in: 3600, scope: YOUTUBE_READONLY_SCOPE }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ id: "UC123", snippet: { title: "Creator", customUrl: "@creator" } }] }), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [
+        { id: "UC123", snippet: { title: "Creator", customUrl: "@creator" } },
+        { id: "UC456", snippet: { title: "Brand", customUrl: "@brand" } },
+      ] }), { status: 200 }));
     const repo = repository();
     const cipher = new VersionedTokenCipher(new Map([["v1", randomBytes(32)]]), "v1");
     const result = await completeYouTubeAuthorization(new URLSearchParams({ state, code: "one-time-code" }), {
@@ -63,6 +66,36 @@ describe("YouTube OAuth connection", () => {
     const saved = vi.mocked(repo.saveConnection).mock.calls[0][0];
     expect(saved.encryptedCredentials).not.toContain("refresh-secret");
     expect(cipher.decrypt(saved.encryptedCredentials).refreshToken).toBe("refresh-secret");
+    expect(saved.channels).toEqual([
+      { externalId: "UC123", title: "Creator", handle: "@creator", thumbnailUrl: null },
+      { externalId: "UC456", title: "Brand", handle: "@brand", thumbnailUrl: null },
+    ]);
+    expect(saved).not.toHaveProperty("channel");
+    expect(saved.oauthStateHash).toBe(createHash("sha256").update(state).digest("hex"));
     expect(JSON.stringify(result)).not.toContain("access-secret");
+  });
+
+  it("sends the bounded safe channel array through target_channels", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: null });
+    const adapter = new SupabaseYouTubeOAuthRepository({ rpc } as never);
+    const channels = [
+      { externalId: "UC123", title: "Creator", handle: "@creator", thumbnailUrl: null },
+      { externalId: "UC456", title: "Brand", handle: "@brand", thumbnailUrl: "https://img.example/brand.jpg" },
+    ];
+    await adapter.saveConnection({
+      workspaceId,
+      oauthStateHash: "b".repeat(64),
+      encryptedCredentials: "ygs1.v1.iv.tag.ciphertext",
+      credentialVersion: "v1",
+      scopes: [YOUTUBE_READONLY_SCOPE],
+      accessTokenExpiresAt: "2026-08-02T02:00:00.000Z",
+      channels,
+    });
+    expect(rpc).toHaveBeenCalledWith("store_youtube_connection", expect.objectContaining({
+      target_channels: channels,
+    }));
+    const args = rpc.mock.calls[0][1];
+    expect(args).not.toHaveProperty("target_external_id");
+    expect(args).not.toHaveProperty("target_title");
   });
 });

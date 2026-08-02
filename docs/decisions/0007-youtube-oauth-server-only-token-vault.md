@@ -19,7 +19,7 @@ Authenticated, security-definer RPCs:
 
 - `create_youtube_oauth_state(workspace, approval, state_hash, expires_at)` verifies membership and an approved `channel_action` for that workspace.
 - `consume_youtube_oauth_state(state_hash)` atomically sets `consumed_at` and returns the bound `workspace_id` and `user_id`; it rejects replay, expiry, and identity/workspace mismatch.
-- `store_youtube_connection(..., state_hash)` atomically verifies the exact consumed state is not already completed, marks it completed, upserts safe channel metadata plus the private encrypted credential envelope, and appends an audit event.
+- `store_youtube_connection(..., state_hash, channels)` atomically verifies the exact consumed state is not already completed, validates and upserts one to fifty safe channel candidates plus the private encrypted credential envelope, marks the state completed, and appends an audit event.
 
 Service-role-only RPCs:
 

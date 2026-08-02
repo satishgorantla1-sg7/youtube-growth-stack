@@ -44,4 +44,28 @@ describe("GoogleYouTubeOAuthProvider", () => {
     await expect(new GoogleYouTubeOAuthProvider(config, fetcher).refresh("refresh-secret"))
       .rejects.toMatchObject({ code: "youtube_reconnect_required", message: "youtube_reconnect_required" });
   });
+
+  it.each([1, 2, 50])("returns a bounded owned-channel array with %i channel(s)", async (count) => {
+    const items = Array.from({ length: count }, (_, index) => ({
+      id: `UC${index}`,
+      snippet: { title: `Channel ${index}`, customUrl: `@channel-${index}` },
+    }));
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items }), { status: 200 }));
+    const channels = await new GoogleYouTubeOAuthProvider(config, fetcher).ownedChannels("access-secret");
+    expect(channels).toHaveLength(count);
+    expect(channels[0]).toEqual({ externalId: "UC0", title: "Channel 0", handle: "@channel-0", thumbnailUrl: null });
+    const url = new URL(String(fetcher.mock.calls[0][0]));
+    expect(url.searchParams.get("mine")).toBe("true");
+    expect(url.searchParams.get("maxResults")).toBe("50");
+  });
+
+  it("rejects a provider response above the 50-channel contract bound", async () => {
+    const items = Array.from({ length: 51 }, (_, index) => ({
+      id: `UC${index}`,
+      snippet: { title: `Channel ${index}` },
+    }));
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items }), { status: 200 }));
+    await expect(new GoogleYouTubeOAuthProvider(config, fetcher).ownedChannels("access-secret"))
+      .rejects.toMatchObject({ code: "youtube_channel_response_invalid" });
+  });
 });
