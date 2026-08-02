@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 }
 
 function redirect(request: NextRequest, outcome: string) {
-  const target = new URL("/settings", request.url);
+  const target = new URL("/settings/youtube", request.url);
   target.searchParams.set("youtube", outcome);
   return NextResponse.redirect(target);
 }
