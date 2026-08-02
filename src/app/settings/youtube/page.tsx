@@ -9,7 +9,7 @@ const outcomes: Record<string, { title: string; body: string; tone?: "error" | "
   connected: { title: "Google authorization completed", body: "The channel connection is being verified from workspace data.", tone: "info" },
   authentication_required: { title: "Sign in required", body: "Sign in again before connecting a YouTube channel.", tone: "error" },
   youtube_not_configured: { title: "YouTube OAuth is not configured", body: "A server administrator must add the Google OAuth credentials.", tone: "error" },
-  youtube_consent_denied: { title: "Google consent was not granted", body: "Nothing was connected. You can try again after a new approval.", tone: "error" },
+  youtube_consent_declined: { title: "Google consent was not granted", body: "Nothing was connected. You can try again after a new approval.", tone: "error" },
   oauth_state_invalid: { title: "Authorization could not be verified", body: "The connection was not changed. Start again from this page.", tone: "error" },
   oauth_state_expired: { title: "Authorization expired", body: "The connection was not changed. Start again from this page.", tone: "error" },
   oauth_state_replayed: { title: "Authorization already used", body: "This authorization cannot be reused. Start again from this page.", tone: "error" },
@@ -17,7 +17,7 @@ const outcomes: Record<string, { title: string; body: string; tone?: "error" | "
   youtube_provider_unavailable: { title: "Google is temporarily unavailable", body: "No connection was changed. Try again later.", tone: "error" },
   youtube_provider_rejected_request: { title: "Google rejected the request", body: "No connection was changed. Start again or use a different Google account.", tone: "error" },
 };
-function mapState(value: string): YouTubeChannelSummary["status"] { if (value === "connected") return "connected"; if (value === "syncing" || value === "refreshing") return "refreshing"; if (["revoked", "expired", "needs_attention"].includes(value)) return "revoked"; if (value === "quota_limited") return "quota_limited"; return "error"; }
+function mapState(value: string): YouTubeChannelSummary["status"] { if (value === "connected" || value === "active") return "connected"; if (value === "syncing" || value === "refreshing") return "refreshing"; if (["revoked", "expired", "needs_attention"].includes(value)) return "revoked"; if (value === "quota_limited") return "quota_limited"; return "error"; }
 function overall(channels: YouTubeChannelSummary[]): YouTubeConnectionStatus { if (!channels.length) return "not_connected"; for (const state of ["revoked", "quota_limited", "refreshing", "connected"] as const) if (channels.some((channel) => channel.status === state)) return state; return "error"; }
 export default async function YouTubeSettingsPage({ searchParams }: { searchParams: Promise<{ youtube?: string }> }) {
   const session = await getWorkspacePageSession("/settings/youtube");
