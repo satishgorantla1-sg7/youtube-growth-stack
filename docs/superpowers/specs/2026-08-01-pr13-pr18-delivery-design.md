@@ -1,6 +1,6 @@
 # PR 13-18 delivery design
 
-**Status:** Proposed for user review
+**Status:** Approved by the user on 2026-08-01; implementation in progress
 
 **Base:** `origin/main` at `25289f2`
 
