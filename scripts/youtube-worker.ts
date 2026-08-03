@@ -1,4 +1,5 @@
 import { runProductionYouTubeSyncOnce } from "../src/lib/providers/youtube-sync-worker";
+import { safeYouTubeWorkerErrorCode } from "../src/lib/providers/youtube-worker-log";
 
 const workerId = process.env.YOUTUBE_WORKER_ID ?? `youtube-${process.pid}`;
 const pollMs = 5_000;
@@ -10,10 +11,9 @@ process.on("SIGTERM", () => { stopping = true; });
 while (!stopping) {
   try {
     const result = await runProductionYouTubeSyncOnce(workerId);
-    if (result === "idle") await new Promise((resolve) => setTimeout(resolve, pollMs));
+    if (result === "idle" || result === "requeued") await new Promise((resolve) => setTimeout(resolve, pollMs));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "youtube_worker_iteration_failed";
-    console.error(JSON.stringify({ event: "youtube_worker_error", workerId, message }));
+    console.error(JSON.stringify({ event: "youtube_worker_error", workerId, code: safeYouTubeWorkerErrorCode(error) }));
     await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
 }

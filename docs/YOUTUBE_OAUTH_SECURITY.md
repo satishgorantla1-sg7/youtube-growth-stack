@@ -25,6 +25,8 @@ sequenceDiagram
 
 - The state lifetime is ten minutes. Consumption happens before token exchange so callbacks cannot be replayed.
 - Owned-channel discovery requests `mine=true&maxResults=50`, validates one to fifty safe channel records, and stores all candidates so a later user choice can support Brand or multi-channel accounts.
+- The provider gate is checked before issuing an authorization URL and again in the callback. The callback atomically reserves one global daily quota unit before `channels.list`; a disabled or exhausted provider makes no YouTube Data API call.
+- If a post-exchange discovery or storage step fails, the server attempts to revoke the new refresh token. If cleanup cannot be confirmed, the browser receives only a safe status directing the creator to review Google third-party access.
 - Only `youtube.readonly` is accepted. A broader or missing returned scope fails closed.
 - Provider requests time out after ten seconds. `429` and `5xx` map to a retryable safe error; provider bodies are not logged or returned.
 - Token refresh and revocation require a database lease. Concurrent callers receive `locked` and make no Google call.

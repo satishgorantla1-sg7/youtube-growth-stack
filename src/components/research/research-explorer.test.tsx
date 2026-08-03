@@ -27,10 +27,18 @@ describe("ResearchDetail", () => {
     expect(screen.getByText("A concise, server-bounded preview.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open source/i })).toHaveAttribute("rel", "noreferrer");
   });
-  it("keeps absent lifecycle controls explicitly unavailable", () => {
+  it("keeps lifecycle mutations unavailable to non-managers", () => {
     render(<ResearchDetail run={{ ...base, state: "dead_letter", errorCode: "lease_expired_at_max_attempts", startedAt: null, updatedAt: base.createdAt, evidenceLimited: false, evidence: [] }} />);
-    expect(screen.getByRole("button", { name: "Retry run" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel run" })).toBeDisabled();
-    expect(screen.getByText(/audited server contracts/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Request retry approval" })).toBeDisabled();
+    expect(screen.getByText(/only a workspace owner or admin/i)).toBeInTheDocument();
+  });
+  it("shows approval, cancellation, and credit state truthfully", () => {
+    const detail = { ...base, actualCredits: null, startedAt: null, updatedAt: base.createdAt, evidenceLimited: false, evidence: [] };
+    const { rerender } = render(<ResearchDetail run={{ ...detail, state: "awaiting_approval" }} canManage />);
+    expect(screen.getByText(/no research is queued and no credits are reserved or consumed/i)).toBeInTheDocument();
+    expect(screen.getByText("Estimated credits")).toBeInTheDocument();
+    rerender(<ResearchDetail run={{ ...detail, state: "cancelling" }} canManage />);
+    expect(screen.getByText(/in-flight work is stopping/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel run" })).not.toBeInTheDocument();
   });
 });
