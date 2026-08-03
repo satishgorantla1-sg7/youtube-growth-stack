@@ -49,12 +49,14 @@ describe("GoogleYouTubeOAuthProvider", () => {
     const items = Array.from({ length: count }, (_, index) => ({
       id: `UC${index}`,
       snippet: { title: `Channel ${index}`, customUrl: `@channel-${index}` },
+      contentDetails: { relatedPlaylists: { uploads: `UU${index}` } },
     }));
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items }), { status: 200 }));
     const channels = await new GoogleYouTubeOAuthProvider(config, fetcher).ownedChannels("access-secret");
     expect(channels).toHaveLength(count);
-    expect(channels[0]).toEqual({ externalId: "UC0", title: "Channel 0", handle: "@channel-0", thumbnailUrl: null });
+    expect(channels[0]).toEqual({ externalId: "UC0", title: "Channel 0", handle: "@channel-0", thumbnailUrl: null, uploadsPlaylistId: "UU0" });
     const url = new URL(String(fetcher.mock.calls[0][0]));
+    expect(url.searchParams.get("part")).toBe("snippet,contentDetails");
     expect(url.searchParams.get("mine")).toBe("true");
     expect(url.searchParams.get("maxResults")).toBe("50");
   });
@@ -63,8 +65,19 @@ describe("GoogleYouTubeOAuthProvider", () => {
     const items = Array.from({ length: 51 }, (_, index) => ({
       id: `UC${index}`,
       snippet: { title: `Channel ${index}` },
+      contentDetails: { relatedPlaylists: { uploads: `UU${index}` } },
     }));
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items }), { status: 200 }));
+    await expect(new GoogleYouTubeOAuthProvider(config, fetcher).ownedChannels("access-secret"))
+      .rejects.toMatchObject({ code: "youtube_channel_response_invalid" });
+  });
+
+  it.each([undefined, ""])("fails closed when the uploads playlist is %s", async (uploads) => {
+    const item = {
+      id: "UC0", snippet: { title: "Channel 0" },
+      contentDetails: { relatedPlaylists: { uploads } },
+    };
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [item] }), { status: 200 }));
     await expect(new GoogleYouTubeOAuthProvider(config, fetcher).ownedChannels("access-secret"))
       .rejects.toMatchObject({ code: "youtube_channel_response_invalid" });
   });

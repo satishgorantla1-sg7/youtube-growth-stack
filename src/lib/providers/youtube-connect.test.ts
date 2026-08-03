@@ -54,8 +54,8 @@ describe("YouTube OAuth connection", () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "access-secret", refresh_token: "refresh-secret", expires_in: 3600, scope: YOUTUBE_READONLY_SCOPE }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ items: [
-        { id: "UC123", snippet: { title: "Creator", customUrl: "@creator" } },
-        { id: "UC456", snippet: { title: "Brand", customUrl: "@brand" } },
+        { id: "UC123", snippet: { title: "Creator", customUrl: "@creator" }, contentDetails: { relatedPlaylists: { uploads: "UU123" } } },
+        { id: "UC456", snippet: { title: "Brand", customUrl: "@brand" }, contentDetails: { relatedPlaylists: { uploads: "UU456" } } },
       ] }), { status: 200 }));
     const repo = repository();
     const cipher = new VersionedTokenCipher(new Map([["v1", randomBytes(32)]]), "v1");
@@ -67,8 +67,8 @@ describe("YouTube OAuth connection", () => {
     expect(saved.encryptedCredentials).not.toContain("refresh-secret");
     expect(cipher.decrypt(saved.encryptedCredentials).refreshToken).toBe("refresh-secret");
     expect(saved.channels).toEqual([
-      { externalId: "UC123", title: "Creator", handle: "@creator", thumbnailUrl: null },
-      { externalId: "UC456", title: "Brand", handle: "@brand", thumbnailUrl: null },
+      { externalId: "UC123", title: "Creator", handle: "@creator", thumbnailUrl: null, uploadsPlaylistId: "UU123" },
+      { externalId: "UC456", title: "Brand", handle: "@brand", thumbnailUrl: null, uploadsPlaylistId: "UU456" },
     ]);
     expect(saved).not.toHaveProperty("channel");
     expect(saved.oauthStateHash).toBe(createHash("sha256").update(state).digest("hex"));
@@ -79,8 +79,8 @@ describe("YouTube OAuth connection", () => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: null });
     const adapter = new SupabaseYouTubeOAuthRepository({ rpc } as never);
     const channels = [
-      { externalId: "UC123", title: "Creator", handle: "@creator", thumbnailUrl: null },
-      { externalId: "UC456", title: "Brand", handle: "@brand", thumbnailUrl: "https://img.example/brand.jpg" },
+      { externalId: "UC123", title: "Creator", handle: "@creator", thumbnailUrl: null, uploadsPlaylistId: "UU123" },
+      { externalId: "UC456", title: "Brand", handle: "@brand", thumbnailUrl: "https://img.example/brand.jpg", uploadsPlaylistId: "UU456" },
     ];
     await adapter.saveConnection({
       workspaceId,

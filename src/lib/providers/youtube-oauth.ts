@@ -22,6 +22,9 @@ const channelResponseSchema = z.object({
       customUrl: z.string().optional(),
       thumbnails: z.record(z.string(), z.object({ url: z.string().url() })).optional(),
     }),
+    contentDetails: z.object({
+      relatedPlaylists: z.object({ uploads: z.string().min(1).max(128) }),
+    }),
   })).min(1).max(50),
 });
 
@@ -43,6 +46,7 @@ export type YouTubeOwnedChannel = {
   title: string;
   handle: string | null;
   thumbnailUrl: string | null;
+  uploadsPlaylistId: string;
 };
 
 export class YouTubeOAuthError extends Error {
@@ -121,7 +125,7 @@ export class GoogleYouTubeOAuthProvider {
 
   async ownedChannels(accessToken: string): Promise<YouTubeOwnedChannel[]> {
     const url = new URL(YOUTUBE_CHANNELS_URL);
-    url.search = new URLSearchParams({ part: "snippet", mine: "true", maxResults: "50" }).toString();
+    url.search = new URLSearchParams({ part: "snippet,contentDetails", mine: "true", maxResults: "50" }).toString();
     const response = await this.request(url, {
       headers: { authorization: `Bearer ${accessToken}` },
     });
@@ -135,6 +139,7 @@ export class GoogleYouTubeOAuthProvider {
         title: channel.snippet.title,
         handle: channel.snippet.customUrl ?? null,
         thumbnailUrl: thumbnails.at(-1)?.url ?? null,
+        uploadsPlaylistId: channel.contentDetails.relatedPlaylists.uploads,
       };
     });
   }

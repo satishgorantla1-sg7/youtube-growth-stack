@@ -26,6 +26,44 @@ describe("SupabaseYouTubeSyncRepository", () => {
     }));
   });
 
+  it("requires and preserves the lease attempt count used by quota idempotency", async () => {
+    const lease = {
+      ...running,
+      encryptedCredentials: "ygs1.v1.iv.tag.ciphertext",
+      credentialVersion: "v1",
+      channelExternalId: "UC-one",
+      uploadsPlaylistId: "UU-one",
+      encryptedPageToken: null,
+      pageTokenVersion: null,
+      cursorInitialized: false,
+      attemptCount: 2,
+    };
+    const rpc = vi.fn(async () => ({ data: lease, error: null }));
+    const repository = new SupabaseYouTubeSyncRepository({ rpc } as YouTubeSyncRpcClient);
+    await expect(repository.lease("worker-one", 60)).resolves.toMatchObject({
+      attemptCount: 2,
+      uploadsPlaylistId: "UU-one",
+    });
+    expect(rpc).toHaveBeenCalledWith("lease_youtube_sync", { worker_id: "worker-one", lease_seconds: 60 });
+  });
+
+  it("rejects a lease without the attempt count required for unique quota charges", async () => {
+    const lease: Record<string, unknown> = {
+      ...running,
+      encryptedCredentials: "ygs1.v1.iv.tag.ciphertext",
+      credentialVersion: "v1",
+      channelExternalId: "UC-one",
+      uploadsPlaylistId: "UU-one",
+      encryptedPageToken: null,
+      pageTokenVersion: null,
+      cursorInitialized: false,
+    };
+    delete lease.attemptCount;
+    const rpc = vi.fn(async () => ({ data: lease, error: null }));
+    const repository = new SupabaseYouTubeSyncRepository({ rpc } as YouTubeSyncRpcClient);
+    await expect(repository.lease("worker-one", 60)).rejects.toThrow();
+  });
+
   it("normalizes page data before the atomic persistence RPC", async () => {
     const rpc = vi.fn(async () => ({ data: { pagesFetched: 1, itemsFetched: 2 }, error: null }));
     const repository = new SupabaseYouTubeSyncRepository({ rpc } as YouTubeSyncRpcClient);
