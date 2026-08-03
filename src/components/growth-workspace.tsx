@@ -283,7 +283,19 @@ export function GrowthWorkspace({
     };
   }, [releaseReplyAudio]);
 
+  useEffect(() => {
+    if (researchEnabled || recorder.current?.state !== "recording") return;
+    recorder.current.onstop = null;
+    recorder.current.stop();
+    recorder.current = null;
+    microphoneStream.current?.getTracks().forEach((track) => track.stop());
+    microphoneStream.current = null;
+    chunks.current = [];
+    setVoiceStatus("idle");
+  }, [researchEnabled]);
+
   const submitPrompt = useCallback(async (value: string) => {
+    if (!researchEnabled) return;
     const clean = value.trim();
     if (!clean || isThinking) return;
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: "user", text: clean }]);
@@ -315,7 +327,7 @@ export function GrowthWorkspace({
     } finally {
       setIsThinking(false);
     }
-  }, [isThinking, workspaceId]);
+  }, [isThinking, researchEnabled, workspaceId]);
 
   const pollResearchRun = useCallback(async (messageId: string, runId: string) => {
     const request = new AbortController();
@@ -388,6 +400,7 @@ export function GrowthWorkspace({
   }
 
   async function toggleRecording() {
+    if (!researchEnabled) return;
     if (voiceStatus === "listening" && recorder.current) {
       setVoiceStatus("processing");
       recorder.current.stop();
@@ -447,7 +460,7 @@ export function GrowthWorkspace({
 
   async function confirmVoiceTranscript() {
     const transcript = voiceTranscript.trim();
-    if (!transcript || isThinking) return;
+    if (!researchEnabled || !transcript || isThinking) return;
     setVoiceTranscript("");
     setVoiceStatus("idle");
     await submitPrompt(transcript);
@@ -569,10 +582,11 @@ export function GrowthWorkspace({
                     aria-label="Review voice transcript"
                     value={voiceTranscript}
                     onChange={(event) => setVoiceTranscript(event.target.value)}
+                    disabled={!researchEnabled}
                   />
                   <div className="voice-review-actions">
                     <button type="button" onClick={() => { setVoiceTranscript(""); setVoiceStatus("idle"); }}>Discard</button>
-                    <button type="button" onClick={() => void confirmVoiceTranscript()} disabled={!voiceTranscript.trim() || isThinking}>Send transcript to agent</button>
+                    <button type="button" onClick={() => void confirmVoiceTranscript()} disabled={!researchEnabled || !voiceTranscript.trim() || isThinking}>Send transcript to agent</button>
                   </div>
                 </div>
               ) : null}
@@ -594,7 +608,7 @@ export function GrowthWorkspace({
                   id="voice-upload-consent"
                   type="checkbox"
                   checked={voiceConsent}
-                  disabled={voiceStatus === "listening" || voiceStatus === "processing"}
+                  disabled={!researchEnabled || voiceStatus === "listening" || voiceStatus === "processing"}
                   onChange={(event) => setVoiceConsent(event.target.checked)}
                 />
                 <span id="voice-upload-disclosure">I consent to this recording being uploaded to OpenAI for transcription. Growth Stack does not store the raw audio.</span>
@@ -617,7 +631,7 @@ export function GrowthWorkspace({
                     onClick={toggleRecording}
                     aria-label={voiceStatus === "listening" ? "Stop recording" : "Start recording"}
                     aria-describedby="voice-upload-disclosure"
-                    disabled={!voiceConsent || voiceStatus === "processing" || voiceStatus === "review"}
+                    disabled={!researchEnabled || !voiceConsent || voiceStatus === "processing" || voiceStatus === "review"}
                   >
                     {voiceStatus === "listening" ? <StopCircle size={23} /> : <Mic size={23} />}
                   </button>
@@ -626,9 +640,9 @@ export function GrowthWorkspace({
               </div>
             </form>
             <div className="suggestions">
-              <button onClick={() => setPrompt("Find content gaps in AI productivity this week")}>Find content gaps</button>
-              <button onClick={() => setPrompt("Analyse my top three competitors")}>Analyse competitors</button>
-              <button onClick={() => setPrompt("Build a full video package from my strongest idea")}>Build a video package</button>
+              <button disabled={!researchEnabled} onClick={() => setPrompt("Find content gaps in AI productivity this week")}>Find content gaps</button>
+              <button disabled={!researchEnabled} onClick={() => setPrompt("Analyse my top three competitors")}>Analyse competitors</button>
+              <button disabled={!researchEnabled} onClick={() => setPrompt("Build a full video package from my strongest idea")}>Build a video package</button>
             </div>
           </section>
 
