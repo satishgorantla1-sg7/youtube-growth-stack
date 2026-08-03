@@ -42,8 +42,8 @@ export class SupabaseDashboardDataSource implements DashboardDataSource {
   }
 
   async channels(workspaceId: string) {
-    const { data, error } = await this.client.from("channels").select("id,title,handle,connection_state,last_synced_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(20);
-    return result(data as ChannelRow[] | null, error);
+    const { data, error } = await this.client.from("channels").select("id,title,handle,connection_state,last_synced_at,is_selected").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(50);
+    return result(data as unknown as ChannelRow[] | null, error);
   }
 
   async projects(workspaceId: string) {
