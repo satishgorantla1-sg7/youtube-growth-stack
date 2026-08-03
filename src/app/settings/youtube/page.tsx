@@ -17,6 +17,8 @@ const outcomes: Record<string, { title: string; body: string; tone?: "error" | "
   youtube_reconnect_required: { title: "Reconnection required", body: "The previous Google authorization is no longer valid.", tone: "error" },
   youtube_provider_unavailable: { title: "Google is temporarily unavailable", body: "No connection was changed. Try again later.", tone: "error" },
   youtube_provider_rejected_request: { title: "Google rejected the request", body: "No connection was changed. Start again or use a different Google account.", tone: "error" },
+  youtube_provider_disabled: { title: "YouTube connection is temporarily disabled", body: "No Google authorization or channel read was started. Try again after an administrator enables the provider.", tone: "error" },
+  youtube_authorization_cleanup_unconfirmed: { title: "Review Google account access", body: "The connection did not finish and automatic authorization cleanup could not be confirmed. Review third-party access in your Google account before trying again.", tone: "error" },
 };
 function mapState(value: string): YouTubeChannelSummary["status"] { if (value === "connected" || value === "active") return "connected"; if (["syncing", "refreshing", "revoking"].includes(value)) return "refreshing"; if (["revoked", "expired", "needs_attention", "reconnect_required"].includes(value)) return "revoked"; if (value === "quota_limited") return "quota_limited"; return "error"; }
 function overall(channels: YouTubeChannelSummary[]): YouTubeConnectionStatus { if (!channels.length) return "not_connected"; for (const state of ["revoked", "quota_limited", "refreshing", "connected"] as const) if (channels.some((channel) => channel.status === state)) return state; return "error"; }

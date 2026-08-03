@@ -148,7 +148,7 @@ create table public.youtube_sync_runs (
 create table public.youtube_quota_ledger (
   id bigint generated always as identity primary key,
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  sync_run_id uuid not null,
+  sync_run_id uuid,
   operation text not null check (char_length(operation) between 1 and 80),
   quota_units integer not null check (quota_units > 0),
   request_idempotency_key text not null check (char_length(request_idempotency_key) between 8 and 200),
@@ -178,6 +178,72 @@ set disabled = true,
     reason = 'Awaiting hosted YouTube credential and quota smoke validation',
     updated_at = now()
 where scope = 'provider' and provider = 'youtube_api';
+
+create or replace function public.assert_youtube_provider_enabled(target_workspace_id uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+declare actor uuid := auth.uid();
+declare actor_role text;
+begin
+  if actor is null then raise exception 'authentication_required' using errcode = '42501'; end if;
+  select role into actor_role from public.workspace_members
+    where workspace_id = target_workspace_id and user_id = actor;
+  if actor_role is null or actor_role not in ('owner','admin')
+  then raise exception 'workspace_access_denied' using errcode = '42501'; end if;
+  if app_private.research_control_disabled(target_workspace_id, 'youtube_api')
+  then raise exception 'youtube_provider_disabled' using errcode = 'P0001'; end if;
+end $$;
+
+create or replace function public.reserve_youtube_provider_quota(
+  target_workspace_id uuid,
+  target_operation text,
+  target_quota_units integer,
+  request_idempotency_key text
+) returns boolean language plpgsql security definer set search_path = '' as $$
+declare inserted_count integer;
+declare daily_limit integer;
+declare used_units bigint;
+begin
+  if auth.role() <> 'service_role' then raise exception 'service_role_required' using errcode = '42501'; end if;
+  if target_operation <> 'channels.list' or target_quota_units <> 1
+  then raise exception 'invalid_youtube_provider_quota' using errcode = '22023'; end if;
+  if char_length(request_idempotency_key) < 8 or char_length(request_idempotency_key) > 200
+  then raise exception 'invalid_quota_idempotency_key' using errcode = '22023'; end if;
+  if not exists (select 1 from public.workspaces where id = target_workspace_id)
+  then raise exception 'workspace_not_found' using errcode = 'P0001'; end if;
+  if app_private.research_control_disabled(target_workspace_id, 'youtube_api')
+  then raise exception 'youtube_provider_disabled' using errcode = 'P0001'; end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('youtube-api-daily:' || (now() at time zone 'UTC')::date::text, 0));
+  if exists (
+    select 1 from public.youtube_quota_ledger ledger
+    where ledger.workspace_id = target_workspace_id
+      and ledger.request_idempotency_key = reserve_youtube_provider_quota.request_idempotency_key
+  ) then return false; end if;
+  select daily_quota_units into strict daily_limit
+    from app_private.youtube_api_quota_control where singleton for update;
+  select coalesce(sum(quota_units), 0) into used_units
+    from public.youtube_quota_ledger
+    where quota_date = (now() at time zone 'UTC')::date;
+  if used_units + target_quota_units > daily_limit
+  then raise exception 'youtube_daily_quota_exceeded' using errcode = 'P0001'; end if;
+
+  perform app_private.consume_provider_rate_limit(target_workspace_id, 'youtube_api');
+  insert into public.youtube_quota_ledger(
+    workspace_id, sync_run_id, operation, quota_units, request_idempotency_key
+  ) values (
+    target_workspace_id, null, target_operation, target_quota_units, request_idempotency_key
+  ) on conflict on constraint youtube_quota_ledger_workspace_id_request_idempotency_key_key do nothing;
+  get diagnostics inserted_count = row_count;
+  return inserted_count = 1;
+end $$;
+
+revoke all on function public.assert_youtube_provider_enabled(uuid) from public, anon;
+grant execute on function public.assert_youtube_provider_enabled(uuid) to authenticated;
+revoke all on function public.reserve_youtube_provider_quota(uuid,text,integer,text)
+  from public, anon, authenticated;
+grant execute on function public.reserve_youtube_provider_quota(uuid,text,integer,text)
+  to service_role;
 
 create table app_private.youtube_sync_cursors (
   sync_run_id uuid primary key,
@@ -287,6 +353,7 @@ begin
   select * into sync from public.youtube_sync_runs
   where (state = 'queued' or (state = 'running' and lease_expires_at <= now()))
     and available_at <= now()
+    and not app_private.research_control_disabled(workspace_id, 'youtube_api')
     and attempt_count < 5
   order by created_at for update skip locked limit 1;
   if not found then return null; end if;
@@ -567,6 +634,7 @@ create or replace function public.create_youtube_oauth_state(
 declare actor uuid := auth.uid();
 begin
   if actor is null then raise exception 'authentication_required' using errcode = '42501'; end if;
+  perform public.assert_youtube_provider_enabled(target_workspace_id);
   if not app_private.is_workspace_member(target_workspace_id)
   then raise exception 'workspace_access_denied' using errcode = '42501'; end if;
   if target_state_hash !~ '^[0-9a-f]{64}$'
@@ -615,6 +683,8 @@ create or replace function public.lease_youtube_token_refresh(
 language plpgsql security definer set search_path = '' as $$
 begin
   if auth.role() <> 'service_role' then raise exception 'service_role_required' using errcode = '42501'; end if;
+  if app_private.research_control_disabled(target_workspace_id, 'youtube_api')
+  then raise exception 'youtube_provider_disabled' using errcode = 'P0001'; end if;
   if target_lease_expires_at <= now() or target_lease_expires_at > now() + interval '2 minutes'
   then raise exception 'invalid_refresh_lease' using errcode = '22023'; end if;
   return query update app_private.youtube_connections connection set
