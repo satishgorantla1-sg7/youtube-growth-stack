@@ -1238,7 +1238,7 @@ export type Database = {
           quota_date: string | null
           quota_units: number
           request_idempotency_key: string
-          sync_run_id: string
+          sync_run_id: string | null
           workspace_id: string
         }
         Insert: {
@@ -1248,7 +1248,7 @@ export type Database = {
           quota_date?: string | null
           quota_units: number
           request_idempotency_key: string
-          sync_run_id: string
+          sync_run_id?: string | null
           workspace_id: string
         }
         Update: {
@@ -1258,7 +1258,7 @@ export type Database = {
           quota_date?: string | null
           quota_units?: number
           request_idempotency_key?: string
-          sync_run_id?: string
+          sync_run_id?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -1501,6 +1501,10 @@ export type Database = {
           target_job_id: string
           target_lease_token: string
         }
+        Returns: undefined
+      }
+      assert_youtube_provider_enabled: {
+        Args: { target_workspace_id: string }
         Returns: undefined
       }
       begin_provider_invocation: {
@@ -1746,6 +1750,15 @@ export type Database = {
         Args: { target_job_id: string; target_lease_token: string }
         Returns: boolean
       }
+      reserve_youtube_provider_quota: {
+        Args: {
+          request_idempotency_key: string
+          target_operation: string
+          target_quota_units: number
+          target_workspace_id: string
+        }
+        Returns: boolean
+      }
       select_youtube_channel: {
         Args: { target_channel_id: string; target_workspace_id: string }
         Returns: Json
@@ -1906,4 +1919,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
