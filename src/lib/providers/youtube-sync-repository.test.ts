@@ -93,6 +93,31 @@ describe("SupabaseYouTubeSyncRepository", () => {
     await expect(repository.recordQuota(running, { operation: "videos.list", units: 0, requestIdempotencyKey: "quota-empty" })).resolves.toBe(false);
     expect(rpc).toHaveBeenCalledTimes(1);
   });
+  it("uses service-only lease-bound RPCs for reconnect and refresh-lock transitions", async () => {
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: {
+        id: running.id, workspaceId: running.workspaceId, state: "failed", errorCode: "youtube_reconnect_required",
+      }, error: null })
+      .mockResolvedValueOnce({ data: {
+        id: running.id, workspaceId: running.workspaceId, state: "queued",
+        errorCode: "youtube_token_refresh_locked", attemptCount: 1,
+        retryAfterSeconds: 5, availableAt: "2026-08-03T20:00:05.000Z",
+      }, error: null });
+    const repository = new SupabaseYouTubeSyncRepository({ rpc } as YouTubeSyncRpcClient);
+    await expect(repository.failForReconnect(running)).resolves.toMatchObject({ state: "failed", errorCode: "youtube_reconnect_required" });
+    await expect(repository.requeueAfterRefreshLock(running)).resolves.toMatchObject({ state: "queued", retryAfterSeconds: 5 });
+    expect(rpc).toHaveBeenNthCalledWith(1, "fail_youtube_sync_for_reconnect", {
+      target_workspace_id: running.workspaceId,
+      target_sync_run_id: running.id,
+      target_lease_token: running.leaseToken,
+    });
+    expect(rpc).toHaveBeenNthCalledWith(2, "requeue_youtube_sync_after_refresh_lock", {
+      target_workspace_id: running.workspaceId,
+      target_sync_run_id: running.id,
+      target_lease_token: running.leaseToken,
+    });
+  });
+
 
   it("refuses persistence and completion without an active lease", async () => {
     const rpc = vi.fn();
@@ -100,6 +125,8 @@ describe("SupabaseYouTubeSyncRepository", () => {
     const queued = { ...running, state: "queued" as const, leaseToken: undefined };
     await expect(repository.persistPage(queued, { channels: [], videos: [] }, { encryptedPageToken: null, pageTokenVersion: null, cursorInitialized: true })).rejects.toThrow("youtube_sync_lease_required");
     await expect(repository.finish(queued, { state: "failed", pagesFetched: 0, itemsFetched: 0 })).rejects.toThrow("youtube_sync_lease_required");
+    await expect(repository.failForReconnect(queued)).rejects.toThrow("youtube_sync_lease_required");
+    await expect(repository.requeueAfterRefreshLock(queued)).rejects.toThrow("youtube_sync_lease_required");
     expect(rpc).not.toHaveBeenCalled();
   });
 });

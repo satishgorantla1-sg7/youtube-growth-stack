@@ -1238,7 +1238,7 @@ export type Database = {
           quota_date: string | null
           quota_units: number
           request_idempotency_key: string
-          sync_run_id: string
+          sync_run_id: string | null
           workspace_id: string
         }
         Insert: {
@@ -1248,7 +1248,7 @@ export type Database = {
           quota_date?: string | null
           quota_units: number
           request_idempotency_key: string
-          sync_run_id: string
+          sync_run_id?: string | null
           workspace_id: string
         }
         Update: {
@@ -1258,7 +1258,7 @@ export type Database = {
           quota_date?: string | null
           quota_units?: number
           request_idempotency_key?: string
-          sync_run_id?: string
+          sync_run_id?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -1281,6 +1281,7 @@ export type Database = {
       youtube_sync_runs: {
         Row: {
           attempt_count: number
+          available_at: string
           channel_id: string | null
           completed_at: string | null
           correlation_id: string
@@ -1303,6 +1304,7 @@ export type Database = {
         }
         Insert: {
           attempt_count?: number
+          available_at?: string
           channel_id?: string | null
           completed_at?: string | null
           correlation_id?: string
@@ -1325,6 +1327,7 @@ export type Database = {
         }
         Update: {
           attempt_count?: number
+          available_at?: string
           channel_id?: string | null
           completed_at?: string | null
           correlation_id?: string
@@ -1500,6 +1503,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      assert_youtube_provider_enabled: {
+        Args: { target_workspace_id: string }
+        Returns: undefined
+      }
       begin_provider_invocation: {
         Args: {
           request_idempotency_key: string
@@ -1625,6 +1632,14 @@ export type Database = {
         }
         Returns: string
       }
+      fail_youtube_sync_for_reconnect: {
+        Args: {
+          target_lease_token: string
+          target_sync_run_id: string
+          target_workspace_id: string
+        }
+        Returns: Json
+      }
       finish_provider_invocation: {
         Args: {
           safe_metadata?: Json
@@ -1723,8 +1738,25 @@ export type Database = {
         }
         Returns: Json
       }
+      requeue_youtube_sync_after_refresh_lock: {
+        Args: {
+          target_lease_token: string
+          target_sync_run_id: string
+          target_workspace_id: string
+        }
+        Returns: Json
+      }
       research_cancellation_requested: {
         Args: { target_job_id: string; target_lease_token: string }
+        Returns: boolean
+      }
+      reserve_youtube_provider_quota: {
+        Args: {
+          request_idempotency_key: string
+          target_operation: string
+          target_quota_units: number
+          target_workspace_id: string
+        }
         Returns: boolean
       }
       select_youtube_channel: {
@@ -1887,4 +1919,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-

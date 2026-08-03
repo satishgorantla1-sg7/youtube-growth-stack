@@ -19,8 +19,10 @@ export async function POST(request: Request, context: { params: Promise<{ runId:
     cancellation_note: body.data.note || undefined,
   });
   if (error) {
-    const status = error.message === "research_cancel_forbidden" ? 403 : 409;
-    return NextResponse.json({ error: error.message }, { status });
+    const known = ["research_cancel_forbidden", "research_not_cancellable", "invalid_cancellation_note"].includes(error.message);
+    const code = known ? error.message : "research_cancellation_unavailable";
+    const status = code === "research_cancel_forbidden" ? 403 : code === "research_cancellation_unavailable" ? 500 : 409;
+    return NextResponse.json({ error: code }, { status });
   }
   return NextResponse.json(data);
 }

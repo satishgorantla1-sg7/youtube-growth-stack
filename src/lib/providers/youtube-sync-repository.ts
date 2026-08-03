@@ -59,6 +59,26 @@ export type YouTubeSyncCursorWrite = {
 };
 
 type RpcResult = Promise<{ data: unknown; error: { message: string } | null }>;
+const reconnectTransitionSchema = z.object({
+  id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  state: z.literal("failed"),
+  errorCode: z.literal("youtube_reconnect_required"),
+});
+const requeueTransitionSchema = z.discriminatedUnion("state", [
+  z.object({
+    id: z.string().uuid(), workspaceId: z.string().uuid(), state: z.literal("queued"),
+    errorCode: z.literal("youtube_token_refresh_locked"), attemptCount: z.number().int().min(1).max(4),
+    retryAfterSeconds: z.number().int().positive(), availableAt: z.string().datetime({ offset: true }),
+  }),
+  z.object({
+    id: z.string().uuid(), workspaceId: z.string().uuid(), state: z.literal("failed"),
+    errorCode: z.literal("youtube_sync_retry_exhausted"), attemptCount: z.literal(5),
+  }),
+]);
+export type YouTubeReconnectTransition = z.infer<typeof reconnectTransitionSchema>;
+export type YouTubeRefreshLockTransition = z.infer<typeof requeueTransitionSchema>;
+
 export type YouTubeSyncRpcClient = { rpc(name: string, args: Record<string, unknown>): RpcResult };
 
 export interface YouTubeSyncRepository {
@@ -69,6 +89,8 @@ export interface YouTubeSyncRepository {
   lease(workerId: string, leaseSeconds: number): Promise<YouTubeSyncLease | null>;
   persistPage(run: YouTubeSyncRun, page: YouTubeSyncPage, cursor: YouTubeSyncCursorWrite): Promise<{ pagesFetched: number; itemsFetched: number }>;
   recordQuota(run: YouTubeSyncRun, charge: YouTubeQuotaCharge): Promise<boolean>;
+  failForReconnect(run: YouTubeSyncRun): Promise<YouTubeReconnectTransition>;
+  requeueAfterRefreshLock(run: YouTubeSyncRun): Promise<YouTubeRefreshLockTransition>;
   finish(run: YouTubeSyncRun, result: {
     state: "completed" | "failed" | "cancelled"; pagesFetched: number; itemsFetched: number; errorCode?: string;
   }): Promise<void>;
@@ -168,6 +190,25 @@ export class SupabaseYouTubeSyncRepository implements YouTubeSyncRepository {
     return z.boolean().parse(data);
   }
 
+  async failForReconnect(run: YouTubeSyncRun): Promise<YouTubeReconnectTransition> {
+    const { data, error } = await this.client.rpc("fail_youtube_sync_for_reconnect", {
+      target_workspace_id: run.workspaceId,
+      target_sync_run_id: run.id,
+      target_lease_token: requireLease(run),
+    });
+    if (error) throw new Error(error.message);
+    return reconnectTransitionSchema.parse(data);
+  }
+
+  async requeueAfterRefreshLock(run: YouTubeSyncRun): Promise<YouTubeRefreshLockTransition> {
+    const { data, error } = await this.client.rpc("requeue_youtube_sync_after_refresh_lock", {
+      target_workspace_id: run.workspaceId,
+      target_sync_run_id: run.id,
+      target_lease_token: requireLease(run),
+    });
+    if (error) throw new Error(error.message);
+    return requeueTransitionSchema.parse(data);
+  }
   async finish(run: YouTubeSyncRun, result: {
     state: "completed" | "failed" | "cancelled"; pagesFetched: number; itemsFetched: number; errorCode?: string;
   }): Promise<void> {

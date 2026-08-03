@@ -29,10 +29,19 @@ const syncSchema = z.object({
   maxPages: z.number().int().min(1).max(10), maxItems: z.number().int().min(1).max(500),
   correlationId: z.string().uuid(), created: z.boolean(),
 });
-const pendingApprovalSchema = z.object({
-  approvalId: z.string().uuid(), workspaceId: z.string().uuid(), state: z.literal("pending"),
-  riskSummary: z.string().min(1).max(1_000), requestedAt: z.string().datetime({ offset: true }),
-});
+const revocationApprovalSchema = z.discriminatedUnion("state", [
+  z.object({
+    approvalId: z.string().uuid(), workspaceId: z.string().uuid(), state: z.literal("pending"),
+    purpose: z.literal("revoke"), riskSummary: z.string().min(1).max(1_000),
+    requestedAt: z.string().datetime({ offset: true }), reused: z.literal(false),
+  }),
+  z.object({
+    approvalId: z.string().uuid(), workspaceId: z.string().uuid(), state: z.literal("approved"),
+    purpose: z.literal("revoke"), riskSummary: z.string().min(1).max(1_000),
+    requestedAt: z.string().datetime({ offset: true }), decidedAt: z.string().datetime({ offset: true }),
+    decidedBy: z.string().uuid(), reused: z.literal(true),
+  }),
+]);
 const approvedSchema = z.object({
   approvalId: z.string().uuid(), workspaceId: z.string().uuid(), state: z.literal("approved"),
   purpose: z.literal("revoke"), decidedAt: z.string().datetime({ offset: true }),
@@ -48,7 +57,7 @@ type LifecycleClient = {
 export type YoutubeLifecycleErrorCode =
   | "authentication_required" | "youtube_lifecycle_forbidden" | "approval_required"
   | "approval_not_pending" | "youtube_sync_disabled" | "youtube_sync_conflict"
-  | "youtube_lifecycle_unavailable";
+  | "youtube_revocation_in_progress" | "youtube_lifecycle_unavailable";
 
 export class YoutubeLifecycleError extends Error {
   constructor(readonly code: YoutubeLifecycleErrorCode) { super(code); this.name = "YoutubeLifecycleError"; }
@@ -88,7 +97,7 @@ export async function requestYoutubeSync(client: LifecycleClient, input: z.infer
 export async function createYoutubeRevocationApproval(client: LifecycleClient, workspaceId: string) {
   const { data, error } = await client.rpc("create_youtube_revocation_approval", { target_workspace_id: workspaceId });
   if (error) throw mapRpcError(error);
-  const parsed = pendingApprovalSchema.safeParse(data);
+  const parsed = revocationApprovalSchema.safeParse(data);
   if (!parsed.success) throw new YoutubeLifecycleError("youtube_lifecycle_unavailable");
   return parsed.data;
 }
@@ -119,6 +128,7 @@ function mapRpcError(error: RpcError) {
   if (message.includes("approval_not_pending")) return new YoutubeLifecycleError("approval_not_pending");
   if (message.includes("youtube_sync_disabled")) return new YoutubeLifecycleError("youtube_sync_disabled");
   if (message.includes("youtube_sync_idempotency_conflict")) return new YoutubeLifecycleError("youtube_sync_conflict");
+  if (message.includes("youtube_revocation_in_progress")) return new YoutubeLifecycleError("youtube_revocation_in_progress");
   if (error.code === "42501" || message.includes("forbidden")) return new YoutubeLifecycleError("youtube_lifecycle_forbidden");
   return new YoutubeLifecycleError("youtube_lifecycle_unavailable");
 }

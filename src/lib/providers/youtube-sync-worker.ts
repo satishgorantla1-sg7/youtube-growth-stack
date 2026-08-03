@@ -14,7 +14,7 @@ import {
 import { YouTubeTokenLifecycle } from "./youtube-token-lifecycle";
 import { readTokenCipher, type VersionedTokenCipher } from "./youtube-token-crypto";
 
-type SyncResult = "idle" | "completed" | "failed" | "lease_lost";
+type SyncResult = "idle" | "completed" | "failed" | "requeued" | "lease_lost";
 type SyncProvider = Pick<YouTubeReadOnlyProvider, "listManagedChannels" | "listUploadIds" | "listVideos">;
 type ProviderFactory = (accessToken: string, beforeRequest: YouTubeAttemptGuard) => SyncProvider;
 type SyncTokenLifecycle = Pick<YouTubeTokenLifecycle, "accessForSync">;
@@ -22,6 +22,7 @@ type SyncTokenLifecycle = Pick<YouTubeTokenLifecycle, "accessForSync">;
 const LEASE_SECONDS = 180;
 const SAFE_CONTROL_CODES = [
   "youtube_sync_disabled",
+  "youtube_daily_quota_exceeded",
   "provider_daily_quota_exceeded",
   "workspace_daily_quota_exceeded",
   "provider_rate_limit_exceeded",
@@ -159,10 +160,21 @@ export async function runYouTubeSyncOnce(
     await repository.finish(lease, { state: "completed", pagesFetched, itemsFetched });
     return "completed";
   } catch (error) {
+    if (error instanceof YouTubeOAuthError && error.code === "youtube_token_refresh_locked") {
+      try {
+        const transition = await repository.requeueAfterRefreshLock(lease);
+        return transition.state === "queued" ? "requeued" : "failed";
+      } catch (transitionError) {
+        if (safeErrorCode(transitionError) === "lease_lost") return "lease_lost";
+        throw transitionError;
+      }
+    }
+    const providerRejectedCredential = error instanceof YouTubeSyncError && error.code === "youtube_http_401";
     const code = safeErrorCode(error);
     if (code === "lease_lost") return "lease_lost";
     try {
-      await repository.finish(lease, { state: "failed", pagesFetched, itemsFetched, errorCode: code });
+      if (providerRejectedCredential) await repository.failForReconnect(lease);
+      else await repository.finish(lease, { state: "failed", pagesFetched, itemsFetched, errorCode: code });
       return "failed";
     } catch (finishError) {
       if (safeErrorCode(finishError) === "lease_lost") return "lease_lost";

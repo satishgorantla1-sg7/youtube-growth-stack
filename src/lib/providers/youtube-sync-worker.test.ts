@@ -50,6 +50,14 @@ function repository(activeLease: YouTubeSyncLease | null, overrides: Partial<You
       return { pagesFetched: pages, itemsFetched: items };
     }),
     recordQuota: vi.fn(async () => true),
+    failForReconnect: vi.fn(async () => ({
+      id: activeLease!.id, workspaceId: activeLease!.workspaceId, state: "failed" as const, errorCode: "youtube_reconnect_required" as const,
+    })),
+    requeueAfterRefreshLock: vi.fn(async () => ({
+      id: activeLease!.id, workspaceId: activeLease!.workspaceId, state: "queued" as const,
+      errorCode: "youtube_token_refresh_locked" as const, attemptCount: Math.min(activeLease!.attemptCount, 4) as 1 | 2 | 3 | 4,
+      retryAfterSeconds: 5, availableAt: "2026-08-03T20:00:05.000Z",
+    })),
     finish: vi.fn(async () => undefined),
     ...overrides,
   };
@@ -153,12 +161,24 @@ describe("runYouTubeSyncOnce", () => {
     expect(JSON.stringify(vi.mocked(provider.factory).mock.calls)).not.toContain("access-secret");
   });
 
+  it("requeues a refresh-lock collision without constructing a provider", async () => {
+    const active = lease();
+    const repo = repository(active);
+    const lifecycle = { accessForSync: vi.fn().mockRejectedValue(new YouTubeOAuthError("youtube_token_refresh_locked", true)) };
+    const provider = providerFactory();
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", lifecycle, provider.factory)).resolves.toBe("requeued");
+    expect(provider.factory).not.toHaveBeenCalled();
+    expect(repo.recordQuota).not.toHaveBeenCalled();
+    expect(repo.requeueAfterRefreshLock).toHaveBeenCalledWith(active);
+    expect(repo.finish).not.toHaveBeenCalled();
+  });
+
   it.each([
-    ["locked refresh", new YouTubeOAuthError("youtube_token_refresh_locked", true), "youtube_token_refresh_locked"],
     ["transient refresh failure", new YouTubeOAuthError("youtube_provider_unavailable", true), "youtube_provider_unavailable"],
     ["invalid grant", new YouTubeOAuthError("youtube_reconnect_required"), "youtube_reconnect_required"],
   ])("blocks provider construction after %s", async (_label, error, safeCode) => {
     const active = lease();
+
     const repo = repository(active);
     const lifecycle = { accessForSync: vi.fn().mockRejectedValue(error) };
     const provider = providerFactory();
@@ -171,6 +191,20 @@ describe("runYouTubeSyncOnce", () => {
       itemsFetched: 0,
       errorCode: safeCode,
     });
+  });
+
+  it("reports a terminal fifth refresh-lock attempt as failed", async () => {
+    const active = lease({ attemptCount: 5 });
+    const repo = repository(active, { requeueAfterRefreshLock: vi.fn(async () => ({
+      id: active.id, workspaceId: active.workspaceId, state: "failed" as const,
+      errorCode: "youtube_sync_retry_exhausted" as const, attemptCount: 5 as const,
+    })) });
+    const lifecycle = { accessForSync: vi.fn().mockRejectedValue(new YouTubeOAuthError("youtube_token_refresh_locked", true)) };
+    const provider = providerFactory();
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", lifecycle, provider.factory)).resolves.toBe("failed");
+    expect(provider.factory).not.toHaveBeenCalled();
+    expect(repo.requeueAfterRefreshLock).toHaveBeenCalledWith(active);
+    expect(repo.finish).not.toHaveBeenCalled();
   });
 
   it("syncs only the selected channel with bounded pages and atomic persistence", async () => {
@@ -219,12 +253,26 @@ describe("runYouTubeSyncOnce", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", tokenLifecycle(), provider.factory)).resolves.toBe("failed");
-    expect(repo.finish).toHaveBeenCalledWith(active, expect.objectContaining({ state: "failed", errorCode: "youtube_reconnect_required" }));
-    expect(JSON.stringify(vi.mocked(repo.finish).mock.calls)).not.toContain("access-secret");
+    expect(repo.failForReconnect).toHaveBeenCalledWith(active);
+    expect(repo.finish).not.toHaveBeenCalled();
+    expect(repo.requeueAfterRefreshLock).not.toHaveBeenCalled();
+    expect(JSON.stringify(vi.mocked(repo.failForReconnect).mock.calls)).not.toContain("access-secret");
     expect(errorSpy).not.toHaveBeenCalled();
     expect(infoSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
     infoSpy.mockRestore();
+  });
+
+  it("preserves the daily quota exhaustion code without damaging credential health", async () => {
+    const active = lease();
+    const repo = repository(active, {
+      recordQuota: vi.fn().mockRejectedValue(new Error("youtube_daily_quota_exceeded")),
+    });
+    const provider = providerFactory();
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", tokenLifecycle(), provider.factory)).resolves.toBe("failed");
+    expect(repo.finish).toHaveBeenCalledWith(active, expect.objectContaining({ errorCode: "youtube_daily_quota_exceeded" }));
+    expect(repo.failForReconnect).not.toHaveBeenCalled();
+    expect(repo.requeueAfterRefreshLock).not.toHaveBeenCalled();
   });
 
   it("resumes from the atomically persisted cursor without replaying earlier pages", async () => {
