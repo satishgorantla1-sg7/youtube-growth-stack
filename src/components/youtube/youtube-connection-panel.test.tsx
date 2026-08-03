@@ -92,6 +92,15 @@ describe("YouTubeConnectionPanel", () => {
     expect(screen.getByText(/imported data was retained/i)).toBeInTheDocument();
   });
 
+  it("renders daily quota exhaustion truthfully and prevents another sync", () => {
+    render(<YouTubeConnectionPanel status="quota_limited" workspaceId={workspaceId} channels={[
+      { id: channelId, title: "Studio", handle: "@studio", lastSyncedAt: null, status: "connected" },
+    ]} />);
+    expect(screen.getByRole("heading", { name: "YouTube quota is temporarily limited" })).toBeInTheDocument();
+    expect(screen.getByText(/existing imported data is unchanged/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sync now" })).toBeDisabled();
+  });
+
   it.each(["configuration_required", "refreshing", "revoked", "quota_limited", "error"] as const)("renders %s truthfully", (status) => {
     render(<YouTubeConnectionPanel status={status} />);
     expect(screen.getAllByRole("heading", { level: 2 }).length).toBeGreaterThan(0);

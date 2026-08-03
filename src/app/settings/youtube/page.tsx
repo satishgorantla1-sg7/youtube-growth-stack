@@ -3,6 +3,7 @@ import { WorkspaceShell } from "@/components/workspace";
 import { YouTubeConnectionPanel, type YouTubeChannelSummary, type YouTubeConnectionStatus, type YouTubeOwnedChannelCandidate } from "@/components/youtube/youtube-connection-panel";
 import { isDataError } from "@/lib/dashboard/contracts";
 import { getWorkspacePageSession } from "@/lib/dashboard/server";
+import { youtubeSyncViewOverride } from "@/lib/youtube/connection-view";
 export const metadata = { title: "YouTube connection · YouTube Growth Stack" };
 export const dynamic = "force-dynamic";
 const outcomes: Record<string, { title: string; body: string; tone?: "error" | "info" }> = {
@@ -26,9 +27,13 @@ export default async function YouTubeSettingsPage({ searchParams }: { searchPara
   let channels: YouTubeChannelSummary[] = [];
   let candidates: YouTubeOwnedChannelCandidate[] = [];
   if (session.source && session.workspaceId) {
-    const result = await session.source.channels(session.workspaceId);
-    if (isDataError(result)) status = "error";
+    const [result, latestSync] = await Promise.all([
+      session.source.channels(session.workspaceId),
+      session.source.latestYoutubeSync(session.workspaceId),
+    ]);
+    if (isDataError(result) || isDataError(latestSync)) status = "error";
     else {
+      const syncOverride = youtubeSyncViewOverride(latestSync.data);
       const active = result.data.filter((channel) => channel.connection_state === "active" || channel.connection_state === "connected");
       const selected = active.filter((channel) => channel.is_selected);
       if (active.length > 1 && selected.length === 0) {
@@ -38,6 +43,7 @@ export default async function YouTubeSettingsPage({ searchParams }: { searchPara
         const visible = selected.length ? selected : active.length === 1 ? active : result.data;
         channels = visible.map((channel) => ({ id: channel.id, title: channel.title, handle: channel.handle, lastSyncedAt: channel.last_synced_at, status: mapState(channel.connection_state) }));
         status = overall(channels);
+        if (status === "connected" && syncOverride) status = syncOverride;
       }
     }
   }
