@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(54);
+select plan(67);
 
 select has_table('app_private', 'youtube_connections', 'private YouTube connection table exists'); -- 1
 select has_table('app_private', 'youtube_oauth_states', 'private one-use OAuth state table exists'); -- 2
@@ -36,6 +36,10 @@ insert into public.approvals (
     '41000000-6000-4000-8000-000000000003', 'approved', 'Revoke YouTube connection',
     '41000000-0000-4000-8000-000000000001', '41000000-0000-4000-8000-000000000001', now());
 
+insert into app_private.youtube_approval_claims(approval_id, workspace_id, purpose) values
+  ('41000000-5000-4000-8000-000000000001', '41000000-1000-4000-8000-000000000001', 'connect'),
+  ('42000000-5000-4000-8000-000000000002', '42000000-2000-4000-8000-000000000002', 'connect');
+
 select ok(not has_schema_privilege('authenticated', 'app_private', 'USAGE'),
   'authenticated users cannot access private connection records'); -- 8
 select ok(not has_table_privilege('authenticated', 'app_private.youtube_connections', 'SELECT'),
@@ -45,6 +49,9 @@ select ok(not has_table_privilege('authenticated', 'app_private.youtube_connecti
 select ok(not has_function_privilege('authenticated',
   'public.lease_youtube_token_refresh(uuid,uuid,timestamptz)', 'EXECUTE'),
   'authenticated users cannot lease private credentials'); -- 11
+select ok(not has_function_privilege('authenticated',
+  'public.lease_youtube_sync(text,integer)', 'EXECUTE'),
+  'authenticated users cannot lease sync jobs or credential envelopes');
 
 set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
@@ -182,6 +189,14 @@ select throws_ok(
   '22023', 'youtube_sync_bounds_invalid', 'sync pages are bounded'); -- 31
 select set_config('test.youtube_lease', coalesce(public.lease_youtube_sync('youtube-test-worker', 60)::text, 'null'), true);
 select isnt(current_setting('test.youtube_lease')::jsonb, 'null'::jsonb, 'queued sync can be leased'); -- 32
+select is(current_setting('test.youtube_lease')::jsonb->>'encryptedCredentials', 'cipher-one',
+  'service-only sync lease carries the encrypted credential envelope');
+select is(current_setting('test.youtube_lease')::jsonb->>'credentialVersion', 'v1',
+  'service-only sync lease carries the credential version');
+select is(current_setting('test.youtube_lease')::jsonb->>'channelExternalId', 'UC-one-personal',
+  'service-only sync lease identifies the selected channel');
+select is(current_setting('test.youtube_lease')::jsonb->>'uploadsPlaylistId', 'UU-one-personal',
+  'service-only sync lease carries the selected uploads playlist');
 select ok(public.record_youtube_quota(
   current_setting('test.youtube_sync')::uuid,
   (current_setting('test.youtube_lease')::jsonb->>'leaseToken')::uuid,
@@ -200,17 +215,30 @@ select lives_ok(
     current_setting('test.youtube_sync')::uuid,
     (current_setting('test.youtube_lease')::jsonb->>'leaseToken')::uuid,
     '[]'::jsonb,
-    '[{"external_id":"video-two","channel_external_id":"UC-one-personal","title":"Video Two","captured_at":"2026-08-01T01:00:00Z","view_count":30}]'::jsonb)$$,
+    '[{"external_id":"video-two","channel_external_id":"UC-one-personal","title":"Video Two","captured_at":"2026-08-01T01:00:00Z","view_count":30}]'::jsonb,
+    'encrypted-page-2', 1, true)$$,
   'leased worker atomically persists a bounded normalized page'); -- 36
 reset role;
 select is((select items_fetched from public.youtube_sync_runs where id = current_setting('test.youtube_sync')::uuid),
   1, 'persisted page advances bounded progress once'); -- 37
+update public.youtube_sync_runs set lease_expires_at = now() - interval '1 second'
+  where id = current_setting('test.youtube_sync')::uuid;
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
+select set_config('test.youtube_retry_lease',
+  public.lease_youtube_sync('youtube-retry-worker', 60)::text, true);
+select ok((current_setting('test.youtube_retry_lease')::jsonb->>'cursorInitialized')::boolean,
+  'retry lease distinguishes an initialized cursor from a brand-new sync');
+select is(current_setting('test.youtube_retry_lease')::jsonb->>'encryptedPageToken',
+  'encrypted-page-2', 'retry lease resumes from the atomically persisted encrypted cursor');
+select is((current_setting('test.youtube_retry_lease')::jsonb->>'pageTokenVersion')::integer,
+  1, 'retry lease returns the cursor key version');
+select is((current_setting('test.youtube_retry_lease')::jsonb->>'pagesFetched')::integer,
+  1, 'retry lease retains committed progress instead of restarting page one');
 select lives_ok(format(
   'select public.finish_youtube_sync(%L, %L, %L, 1, 1, null)',
   current_setting('test.youtube_sync')::uuid,
-  (current_setting('test.youtube_lease')::jsonb->>'leaseToken')::uuid,
+  (current_setting('test.youtube_retry_lease')::jsonb->>'leaseToken')::uuid,
   'completed'), 'valid lease can complete a bounded sync'); -- 38
 reset role;
 select is((select state from public.youtube_sync_runs where id = current_setting('test.youtube_sync')::uuid),
@@ -237,7 +265,14 @@ set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '41000000-0000-4000-8000-000000000001', true);
 select set_config('test.revoke_approval',
-  (public.create_youtube_connection_approval('41000000-1000-4000-8000-000000000001')->>'approvalId'), true);
+  (public.create_youtube_revocation_approval('41000000-1000-4000-8000-000000000001')->>'approvalId'), true);
+reset role;
+select is((select purpose from app_private.youtube_approval_claims
+    where approval_id = current_setting('test.revoke_approval')::uuid),
+  'revoke', 'revocation approval records its purpose when created');
+set local role authenticated;
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '41000000-0000-4000-8000-000000000001', true);
 select set_config('test.revoke_decision', public.decide_youtube_connection_approval(
   current_setting('test.revoke_approval')::uuid, 'approved', 'Separate revocation approval')::text, true);
 set local role service_role;
@@ -248,13 +283,38 @@ select isnt((select row_to_json(lease)::text from public.lease_youtube_revocatio
   '41000000-1000-4000-8000-000000000001', current_setting('test.revoke_approval')::uuid,
   current_setting('test.revoke_owner')::uuid,
   now() + interval '30 seconds') lease), null, 'connected token can be revocation leased'); -- 44
+reset role;
+update app_private.youtube_connections set refresh_lock_expires_at = now() - interval '1 second'
+  where workspace_id = '41000000-1000-4000-8000-000000000001';
+set local role service_role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+select set_config('test.revoke_retry_owner', gen_random_uuid()::text, true);
+select isnt((select row_to_json(lease)::text from public.lease_youtube_revocation(
+  '41000000-1000-4000-8000-000000000001', current_setting('test.revoke_approval')::uuid,
+  current_setting('test.revoke_retry_owner')::uuid,
+  now() + interval '30 seconds') lease), null,
+  'same approval can retry only while revocation remains in progress');
 select lives_ok(format('select public.complete_youtube_revocation(%L,%L)',
-  '41000000-1000-4000-8000-000000000001'::uuid, current_setting('test.revoke_owner')::uuid),
+  '41000000-1000-4000-8000-000000000001'::uuid, current_setting('test.revoke_retry_owner')::uuid),
   'credentials are erased only after revocation succeeds'); -- 45
 reset role;
+select is((select claim_state from app_private.youtube_approval_claims
+    where approval_id = current_setting('test.revoke_approval')::uuid),
+  'completed', 'successful revocation permanently completes its approval claim');
 select is((select encrypted_credentials from app_private.youtube_connections
     where workspace_id = '41000000-1000-4000-8000-000000000001'),
   null, 'revocation erases the encrypted credential envelope'); -- 46
+update app_private.youtube_connections set state = 'connected', encrypted_credentials = 'reconnected-cipher',
+  expires_at = now() + interval '1 hour', revocation_approval_id = null
+  where workspace_id = '41000000-1000-4000-8000-000000000001';
+set local role service_role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+select throws_ok(format(
+  'select * from public.lease_youtube_revocation(%L,%L,%L,now() + interval ''30 seconds'')',
+  '41000000-1000-4000-8000-000000000001'::uuid,
+  current_setting('test.revoke_approval')::uuid, gen_random_uuid()),
+  'P0001', 'approval_required',
+  'completed revocation approval cannot be reused after reconnect');
 
 set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
