@@ -23,7 +23,7 @@ No raw access token, refresh token, OAuth code, state value, or credential envel
 
 ## Bounded synchronization
 
-`youtube_sync_runs` is idempotent per workspace and caps each run at 10 pages, 500 items, and 5 attempts. Authenticated owner/admin/editor members can request a sync only for the selected active channel. A service worker leases one run at a time, persists each normalized page atomically, reserves quota with a request idempotency key before each outbound attempt, and completes with a safe error code.
+`youtube_sync_runs` is idempotent per workspace and caps each run at 10 pages, 500 items, and 5 attempts. Authenticated owner/admin/editor members can request a sync only for the selected active channel. A service worker leases one run at a time, persists each normalized page and its versioned encrypted pagination cursor atomically, resumes safely after lease expiry, reserves quota with a request idempotency key before each outbound attempt, and completes with a safe error code.
 
 | Control | Default | Hard maximum |
 | --- | ---: | ---: |
