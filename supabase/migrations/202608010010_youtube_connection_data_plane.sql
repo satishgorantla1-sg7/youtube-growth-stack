@@ -967,46 +967,72 @@ returns jsonb language plpgsql security definer set search_path = '' as $$
 declare actor uuid := auth.uid();
 declare actor_role text;
 declare approval public.approvals%rowtype;
-declare target_connection_id uuid;
+declare target_connection app_private.youtube_connections%rowtype;
 begin
   if actor is null then raise exception 'authentication_required' using errcode = '42501'; end if;
   select role into actor_role from public.workspace_members
     where workspace_id = target_workspace_id and user_id = actor;
   if actor_role is null or actor_role not in ('owner','admin')
   then raise exception 'youtube_approval_forbidden' using errcode = '42501'; end if;
-  select id into target_connection_id from app_private.youtube_connections
-    where workspace_id = target_workspace_id and state in ('connected','reconnect_required','revoking');
-  if target_connection_id is null then raise exception 'youtube_connection_not_found' using errcode = 'P0001'; end if;
-  if exists (select 1 from app_private.youtube_connections where id = target_connection_id and state = 'revoking')
-  then raise exception 'youtube_revocation_in_progress' using errcode = 'P0001'; end if;
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('youtube-revoke-approval:' || target_workspace_id::text, 0));
+  select * into target_connection from app_private.youtube_connections
+    where workspace_id = target_workspace_id and state in ('connected','reconnect_required','revoking')
+    for update;
+  if not found then raise exception 'youtube_connection_not_found' using errcode = 'P0001'; end if;
+
+  if target_connection.state = 'revoking' then
+    if target_connection.refresh_lock_expires_at is null
+      or target_connection.refresh_lock_expires_at > now()
+    then raise exception 'youtube_revocation_in_progress' using errcode = 'P0001'; end if;
+    select item.* into approval from public.approvals item
+      join app_private.youtube_approval_claims claim on claim.approval_id = item.id
+      where item.id = target_connection.revocation_approval_id
+        and item.workspace_id = target_workspace_id
+        and item.entity_type = 'channel_action' and item.entity_id = target_connection.id
+        and item.state = 'approved' and item.decided_by = actor
+        and claim.workspace_id = target_workspace_id
+        and claim.connection_id = target_connection.id and claim.purpose = 'revoke'
+        and claim.claim_state = 'in_progress'
+      for update of item, claim;
+    if not found then
+      raise exception 'youtube_approval_forbidden' using errcode = '42501';
+    end if;
+    return jsonb_build_object(
+      'approvalId', approval.id, 'workspaceId', approval.workspace_id,
+      'connectionId', target_connection.id, 'state', approval.state,
+      'purpose', 'revoke', 'riskSummary', approval.risk_summary,
+      'requestedAt', approval.requested_at, 'decidedAt', approval.decided_at,
+      'decidedBy', approval.decided_by, 'reused', true);
+  end if;
+
   select item.* into approval from public.approvals item
     join app_private.youtube_approval_claims claim on claim.approval_id = item.id
     where item.workspace_id = target_workspace_id and item.entity_type = 'channel_action'
-      and item.entity_id = target_connection_id and item.state = 'pending'
-      and claim.purpose = 'revoke' and claim.connection_id = target_connection_id
+      and item.entity_id = target_connection.id and item.state = 'pending'
+      and claim.purpose = 'revoke' and claim.connection_id = target_connection.id
       and claim.claim_state = 'available'
     order by item.requested_at desc for update of item limit 1;
   if not found then
     insert into public.approvals(
       workspace_id, entity_type, entity_id, state, risk_summary, estimated_credits, requested_by
     ) values (
-      target_workspace_id, 'channel_action', target_connection_id, 'pending',
+      target_workspace_id, 'channel_action', target_connection.id, 'pending',
       'Revoke the current YouTube connection, remove stored credentials, and stop future synchronization.',
       0, actor
     ) returning * into approval;
     insert into app_private.youtube_approval_claims(
       approval_id, workspace_id, connection_id, purpose
-    ) values (approval.id, target_workspace_id, target_connection_id, 'revoke');
+    ) values (approval.id, target_workspace_id, target_connection.id, 'revoke');
     insert into public.audit_events(workspace_id, actor_id, action, entity_type, entity_id, metadata)
     values(target_workspace_id, actor, 'youtube.approval.requested', 'approval', approval.id::text,
-      jsonb_build_object('purpose', 'revoke', 'connection_id', target_connection_id));
+      jsonb_build_object('purpose', 'revoke', 'connection_id', target_connection.id));
   end if;
   return jsonb_build_object(
     'approvalId', approval.id, 'workspaceId', approval.workspace_id,
-    'connectionId', target_connection_id, 'state', approval.state, 'purpose', 'revoke',
-    'riskSummary', approval.risk_summary, 'requestedAt', approval.requested_at);
+    'connectionId', target_connection.id, 'state', approval.state, 'purpose', 'revoke',
+    'riskSummary', approval.risk_summary, 'requestedAt', approval.requested_at,
+    'reused', false);
 end $$;
 
 create or replace function public.decide_youtube_connection_approval(
@@ -1159,12 +1185,12 @@ begin
     ) values (
       target_workspace_id, connection_id, 'youtube', candidate_external_id, candidate->>'title',
       nullif(candidate->>'handle', ''), nullif(candidate->>'thumbnailUrl', ''),
-      candidate->>'uploadsPlaylistId', 'unknown', candidate_count = 1, 'active', now()
+      candidate->>'uploadsPlaylistId', 'unknown', candidate_count = 1, 'active', null
     ) on conflict (workspace_id, provider, external_id) do update set
       youtube_connection_id = excluded.youtube_connection_id, title = excluded.title,
       handle = excluded.handle, thumbnail_url = excluded.thumbnail_url,
       uploads_playlist_id = excluded.uploads_playlist_id,
-      is_selected = excluded.is_selected, connection_state = 'active', last_synced_at = now();
+      is_selected = excluded.is_selected, connection_state = 'active';
   end loop;
   update app_private.youtube_oauth_states set completed_at = now() where id = oauth_state_id;
   update app_private.youtube_approval_claims claim set

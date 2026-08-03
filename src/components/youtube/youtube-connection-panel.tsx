@@ -41,6 +41,7 @@ export function YouTubeConnectionPanel({
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [disconnectReview, setDisconnectReview] = useState(false);
   const [disconnectConfirmed, setDisconnectConfirmed] = useState(false);
+  const [revocationApprovalId, setRevocationApprovalId] = useState<string | null>(null);
   const [title, body] = copy[status];
   const reconnecting = status === "revoked";
 
@@ -108,15 +109,23 @@ export function YouTubeConnectionPanel({
     if (!workspaceId || !disconnectConfirmed || busy) return;
     setBusy(true); setMessage(null);
     try {
-      const pending = await jsonPost("/api/integrations/youtube/revocation-approval", { workspaceId });
-      if (typeof pending.approvalId !== "string") throw new Error("approval_creation_failed");
-      const decision = await jsonPost(`/api/integrations/youtube/approval/${encodeURIComponent(pending.approvalId)}`, { decision: "approved", note: "Confirmed revocation of Google access. Imported data is retained." });
-      if (decision.state !== "approved") throw new Error("approval_decision_failed");
-      await jsonPost("/api/integrations/youtube/disconnect", { workspaceId, approvalId: pending.approvalId });
+      let approvalId = revocationApprovalId;
+      if (!approvalId) {
+        const approval = await jsonPost("/api/integrations/youtube/revocation-approval", { workspaceId });
+        if (typeof approval.approvalId !== "string") throw new Error("approval_creation_failed");
+        approvalId = approval.approvalId;
+        if (approval.state === "pending") {
+          const decision = await jsonPost(`/api/integrations/youtube/approval/${encodeURIComponent(approvalId)}`, { decision: "approved", note: "Confirmed revocation of Google access. Imported data is retained." });
+          if (decision.state !== "approved") throw new Error("approval_decision_failed");
+        } else if (approval.state !== "approved") throw new Error("approval_creation_failed");
+        setRevocationApprovalId(approvalId);
+      }
+      await jsonPost("/api/integrations/youtube/disconnect", { workspaceId, approvalId });
       setMessage("Google access was revoked. Imported data was retained.");
+      setRevocationApprovalId(null);
       setDisconnectReview(false); setDisconnectConfirmed(false);
       refresh();
-    } catch { setMessage("Google access could not be revoked. The connection was not reported as disconnected."); }
+    } catch (error) { setMessage(error instanceof Error && error.message === "youtube_revocation_in_progress" ? "Revocation is still in progress. Wait for the current attempt to finish, then retry with the same approval." : "Google access could not be revoked. The approved revocation is retained for a safe retry; the connection was not reported as disconnected."); }
     finally { setBusy(false); }
   }
 

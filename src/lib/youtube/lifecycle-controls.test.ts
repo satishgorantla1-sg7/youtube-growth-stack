@@ -48,9 +48,14 @@ describe("YouTube lifecycle controls", () => {
   });
 
   it("uses the purpose-specific revocation approval contract", async () => {
-    const rpcClient = client({ approvalId, workspaceId, state: "pending", riskSummary: "Revoke Google access only.", requestedAt: "2026-08-02T01:00:00.000Z" });
+    const rpcClient = client({ approvalId, workspaceId, state: "pending", purpose: "revoke", riskSummary: "Revoke Google access only.", requestedAt: "2026-08-02T01:00:00.000Z", reused: false });
     await expect(createYoutubeRevocationApproval(rpcClient, workspaceId)).resolves.toMatchObject({ approvalId, state: "pending" });
     expect(rpcClient.rpc).toHaveBeenCalledWith("create_youtube_revocation_approval", { target_workspace_id: workspaceId });
+  });
+
+  it("accepts only a purpose-bound approved revocation retry", async () => {
+    const rpcClient = client({ approvalId, workspaceId, state: "approved", purpose: "revoke", riskSummary: "Revoke Google access only.", requestedAt: "2026-08-02T01:00:00.000Z", decidedAt: "2026-08-02T01:01:00.000Z", decidedBy: userId, reused: true });
+    await expect(createYoutubeRevocationApproval(rpcClient, workspaceId)).resolves.toMatchObject({ approvalId, state: "approved", reused: true });
   });
 
   it("revalidates current owner/admin authorization before service revocation", async () => {

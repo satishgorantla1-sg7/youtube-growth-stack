@@ -61,6 +61,7 @@ describe("YouTubeConnectionPanel", () => {
   it("queues a bounded selected-channel sync", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ id: crypto.randomUUID(), created: true }), { status: 202 }));
     render(<YouTubeConnectionPanel status="connected" workspaceId={workspaceId} channels={[{ id: channelId, title: "Studio", handle: "@studio", lastSyncedAt: null, status: "connected" }]} />);
+    expect(screen.getByText("Never synchronized")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(fetchMock.mock.calls[0][0]).toBe("/api/integrations/youtube/sync");
@@ -90,6 +91,42 @@ describe("YouTubeConnectionPanel", () => {
     expect(refresh).toHaveBeenCalledOnce();
     expect(screen.getByRole("button", { name: /deletion approval unavailable/i })).toBeDisabled();
     expect(screen.getByText(/imported data was retained/i)).toBeInTheDocument();
+  });
+
+  it("retains the approved revocation ID when a transient disconnect fails", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ approvalId, workspaceId, state: "pending" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ approvalId, workspaceId, state: "approved" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "youtube_lifecycle_unavailable" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "revoked" }), { status: 200 }));
+    render(<YouTubeConnectionPanel status="connected" workspaceId={workspaceId} refresh={vi.fn()} channels={[{ id: channelId, title: "Studio", handle: "@studio", lastSyncedAt: null, status: "connected" }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect Google" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /separate revocation action/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve and disconnect" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/approved revocation is retained for a safe retry/i);
+    fireEvent.click(screen.getByRole("button", { name: "Approve and disconnect" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/integrations/youtube/revocation-approval",
+      `/api/integrations/youtube/approval/${approvalId}`,
+      "/api/integrations/youtube/disconnect",
+      "/api/integrations/youtube/disconnect",
+    ]);
+  });
+
+  it("reuses an expired approved revocation without deciding it again", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ approvalId, workspaceId, state: "approved", reused: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "revoked" }), { status: 200 }));
+    render(<YouTubeConnectionPanel status="connected" workspaceId={workspaceId} refresh={vi.fn()} channels={[{ id: channelId, title: "Studio", handle: "@studio", lastSyncedAt: null, status: "connected" }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect Google" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /separate revocation action/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve and disconnect" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/integrations/youtube/revocation-approval",
+      "/api/integrations/youtube/disconnect",
+    ]);
   });
 
   it("renders daily quota exhaustion truthfully and prevents another sync", () => {
