@@ -1,5 +1,6 @@
 import { GrowthWorkspace, type GrowthWorkspaceDashboard } from "@/components/growth-workspace";
 import { isDataError, type ResearchSourceRow } from "@/lib/dashboard/contracts";
+import { selectActiveDashboardChannel } from "@/lib/dashboard/loaders";
 import { getWorkspacePageSession } from "@/lib/dashboard/server";
 import { researchReadiness } from "@/lib/research/orchestrator";
 
@@ -26,8 +27,9 @@ export default async function Home() {
 
   let dashboard: GrowthWorkspaceDashboard | null = null;
   if (!isDataError(channels) && !isDataError(ideas) && !isDataError(approvals) && !isDataError(packages) && !isDataError(sources)) {
+    const activeChannel = selectActiveDashboardChannel(channels.data);
     dashboard = {
-      channel: channels.data[0] ? { name: channels.data[0].title, status: channels.data[0].connection_state === "connected" ? "connected" : "needs_attention" } : null,
+      channel: activeChannel ? { name: activeChannel.title, status: "connected" } : null,
       ideas: ideas.data.slice(0, 3).map((idea) => ({ id: idea.id, title: idea.title, score: idea.score, signal: null })),
       approvals: approvals.data.filter((approval) => approval.state === "pending").slice(0, 3).map((approval) => ({
         id: approval.id,
@@ -52,6 +54,7 @@ export default async function Home() {
     usage={usage}
     navigationCounts={session.navigationCounts}
     mode="connected"
-    readiness={readiness.ready ? { status: "ready", label: "Research providers ready" } : { status: "configuration_required", label: `Setup required: ${readiness.missing.join(", ")}` }}
+    researchEnabled={readiness.ready}
+    readiness={readiness.ready ? { status: "ready", label: "Research providers ready" } : { status: "configuration_required", label: readiness.missing.includes("activation") ? "Paid research disabled" : `Setup required: ${readiness.missing.join(", ")}` }}
   />;
 }

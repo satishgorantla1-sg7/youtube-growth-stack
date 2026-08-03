@@ -6,7 +6,7 @@ import { runProductionWorkerOnce, runWorkerOnce } from "./worker";
 
 export type DispatchResult = {
   state: "configuration_required" | "idle" | "completed" | "queued" | "dead_letter" | "cancelled";
-  missing: Array<"apify" | "firecrawl" | "worker">;
+  missing: Array<"activation" | "apify" | "firecrawl" | "worker">;
 };
 
 export function researchDispatchStatus(requested: SourceType[] = ["youtube", "web"]): DispatchResult {

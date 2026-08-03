@@ -288,6 +288,13 @@ describe("GrowthWorkspace reply speech", () => {
     expect(stopTrack).toHaveBeenCalledTimes(1);
   });
 });
+describe("GrowthWorkspace readiness", () => {
+  it("labels the primary send action and disables research when the server gate is closed", () => {
+    render(<GrowthWorkspace researchEnabled={false} />);
+    expect(screen.getByLabelText(/message your growth agent/i)).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send message to growth agent" })).toBeDisabled();
+  });
+});
 describe("GrowthWorkspace research approvals", () => {
   it("shows a bounded approval plan for typed input and only queues after approval", async () => {
     const fetchMock = mockVoiceFetch();

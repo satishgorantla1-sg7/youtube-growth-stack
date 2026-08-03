@@ -26,6 +26,7 @@ describe("research orchestrator provider safety", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "publishable-key");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key");
+    vi.stubEnv("PAID_RESEARCH_PROVIDERS_ENABLED", "true");
     vi.stubEnv("FIRECRAWL_API_KEY", "configured-firecrawl-key");
     vi.stubEnv("APIFY_API_TOKEN", undefined);
     const fetchMock = vi.fn();
@@ -33,6 +34,24 @@ describe("research orchestrator provider safety", () => {
 
     await expect(runResearch("AI productivity", ["youtube", "web"], 10)).rejects.toMatchObject({
       code: "research_configuration_missing",
+      retryable: true,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("never calls paid providers when credentials exist but activation is disabled", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "false");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "publishable-key");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key");
+    vi.stubEnv("FIRECRAWL_API_KEY", "configured-firecrawl-key");
+    vi.stubEnv("APIFY_API_TOKEN", "configured-apify-key");
+    vi.stubEnv("PAID_RESEARCH_PROVIDERS_ENABLED", "false");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(runResearch("AI productivity", ["youtube", "web"], 10)).rejects.toMatchObject({
+      code: "research_provider_disabled",
       retryable: true,
     });
     expect(fetchMock).not.toHaveBeenCalled();

@@ -6,6 +6,7 @@ describe("researchSafetyReadiness", () => {
     expect(researchSafetyReadiness({})).toEqual({
       mode: "demo",
       configurationComplete: false,
+      providersActivated: false,
       activation: "disabled_in_demo",
       controls: { enforceable: false, verification: "not_applicable" },
       providers: {
@@ -26,13 +27,14 @@ describe("researchSafetyReadiness", () => {
     });
 
     expect(readiness.configurationComplete).toBe(false);
+    expect(readiness.providersActivated).toBe(false);
     expect(readiness.activation).toBe("configuration_required");
     expect(readiness.controls).toEqual({ enforceable: true, verification: "hosted_required" });
     expect(readiness.providers.firecrawl).toBe("configuration_required");
-    expect(readiness.missing).toEqual(["firecrawl"]);
+    expect(readiness.missing).toEqual(["activation", "firecrawl"]);
   });
 
-  it("requires hosted verification even when all server configuration is present", () => {
+  it("keeps credentials present but paid providers disabled by default", () => {
     const readiness = researchSafetyReadiness({
       NEXT_PUBLIC_DEMO_MODE: "false",
       NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
@@ -43,6 +45,25 @@ describe("researchSafetyReadiness", () => {
     });
 
     expect(readiness.configurationComplete).toBe(true);
+    expect(readiness.providersActivated).toBe(false);
+    expect(readiness.activation).toBe("disabled_by_operator");
+    expect(readiness.providers).toEqual({ apify: "configured", firecrawl: "configured" });
+    expect(readiness.missing).toEqual(["activation"]);
+  });
+
+  it("requires hosted verification even when all server configuration is present", () => {
+    const readiness = researchSafetyReadiness({
+      PAID_RESEARCH_PROVIDERS_ENABLED: "true",
+      NEXT_PUBLIC_DEMO_MODE: "false",
+      NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "publishable",
+      SUPABASE_SERVICE_ROLE_KEY: "service-role",
+      APIFY_API_TOKEN: "configured",
+      FIRECRAWL_API_KEY: "configured",
+    });
+
+    expect(readiness.configurationComplete).toBe(true);
+    expect(readiness.providersActivated).toBe(true);
     expect(readiness.activation).toBe("hosted_verification_required");
     expect(readiness.controls).toEqual({ enforceable: true, verification: "hosted_required" });
     expect(readiness.providers).toEqual({ apify: "configured", firecrawl: "configured" });

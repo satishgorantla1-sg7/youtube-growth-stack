@@ -83,7 +83,7 @@ type ApprovalResponse = {
   state?: "queued" | "cancelled";
   execution?: {
     state?: "configuration_required" | "idle";
-    missing?: Array<"apify" | "firecrawl" | "worker">;
+    missing?: Array<"activation" | "apify" | "firecrawl" | "worker">;
   };
   error?: string;
 };
@@ -93,7 +93,7 @@ type ResearchStatusResponse = {
   errorCode?: string | null;
   execution?: {
     state?: "configuration_required" | "idle" | "completed" | "queued" | "dead_letter";
-    missing?: Array<"apify" | "firecrawl" | "worker">;
+    missing?: Array<"activation" | "apify" | "firecrawl" | "worker">;
   };
   sources?: ResearchEvidence[];
   error?: string;
@@ -138,6 +138,7 @@ export type GrowthWorkspaceProps = {
   readiness?: WorkspaceReadiness;
   navigationCounts?: WorkspaceNavigationCounts;
   mode?: "demo" | "connected";
+  researchEnabled?: boolean;
 };
 
 export function GrowthWorkspace({
@@ -150,6 +151,7 @@ export function GrowthWorkspace({
   readiness,
   navigationCounts,
   mode = "connected",
+  researchEnabled = true,
 }: GrowthWorkspaceProps) {
   const [messages, setMessages] = useState<Message[]>(() => starterMessages(displayName));
   const [prompt, setPrompt] = useState("");
@@ -579,6 +581,7 @@ export function GrowthWorkspace({
                 placeholder="Ask for ideas, analyse a competitor, or build a complete video package…"
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
+                disabled={!researchEnabled}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
@@ -618,7 +621,7 @@ export function GrowthWorkspace({
                   >
                     {voiceStatus === "listening" ? <StopCircle size={23} /> : <Mic size={23} />}
                   </button>
-                  <button className="send-button" type="submit" disabled={!prompt.trim() || isThinking}><ChevronRight size={21} /></button>
+                  <button className="send-button" type="submit" aria-label="Send message to growth agent" disabled={!researchEnabled || !prompt.trim() || isThinking}><ChevronRight size={21} /></button>
                 </div>
               </div>
             </form>
@@ -638,7 +641,7 @@ export function GrowthWorkspace({
               {dashboard?.ideas.length ? (
                 <div className="idea-list">
                   {dashboard.ideas.map((idea, index) => (
-                    <Link className="idea-row" href={`/ideas/${idea.id}`} key={idea.id}>
+                    <Link className="idea-row" href="/ideas" key={idea.id}>
                       <span className="score-ring" aria-label={idea.score === null ? "Not scored" : `Analysis score ${idea.score}`}>{idea.score ?? "—"}</span>
                       <span className="idea-copy"><small>{idea.signal ?? "Signal not analysed"}</small><strong>{idea.title}</strong></span>
                       <span className="rank">{String(index + 1).padStart(2, "0")}</span>

@@ -8,7 +8,12 @@ export function GET() {
   return NextResponse.json({
     ok: true, service: "youtube-growth-stack",
     mode: research.mode,
-    providers: { openai: Boolean(env.OPENAI_API_KEY), firecrawl: Boolean(env.FIRECRAWL_API_KEY), apify: Boolean(env.APIFY_API_TOKEN) },
+    providers: {
+      openaiConfigured: Boolean(env.OPENAI_API_KEY),
+      apify: research.providers.apify,
+      firecrawl: research.providers.firecrawl,
+      paidResearchEnabled: research.providersActivated,
+    },
     research,
   });
 }

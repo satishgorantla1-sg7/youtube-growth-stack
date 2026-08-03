@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardDataSource } from "./contracts";
-import { loadIdeasPage, loadPackagesPage, loadResearchPage, loadUsagePage } from "./loaders";
+import { loadIdeasPage, loadPackagesPage, loadResearchPage, loadUsagePage, selectActiveDashboardChannel } from "./loaders";
 
 const ok = <T,>(data: T) => Promise.resolve({ data, error: null } as const);
 
@@ -64,5 +64,15 @@ describe("dashboard page loaders", () => {
       ]),
     }), "workspace-1");
     expect(loaded).toMatchObject({ kind: "ready", data: { totalCredits: 5 } });
+  });
+
+  it("shows only the explicitly selected active channel on the dashboard", () => {
+    const channels = [
+      { id: "old", title: "Expired channel", handle: "@old", connection_state: "reconnect_required", last_synced_at: null, is_selected: true },
+      { id: "candidate", title: "Unselected active", handle: "@candidate", connection_state: "active", last_synced_at: null, is_selected: false },
+      { id: "current", title: "Current channel", handle: "@current", connection_state: "active", last_synced_at: null, is_selected: true },
+    ];
+    expect(selectActiveDashboardChannel(channels)?.id).toBe("current");
+    expect(selectActiveDashboardChannel(channels.slice(0, 2))).toBeNull();
   });
 });
