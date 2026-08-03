@@ -185,6 +185,7 @@ export class GoogleYouTubeOAuthProvider {
     const body = await response.json().catch(() => null) as { error?: string | { status?: string } } | null;
     const providerCode = typeof body?.error === "string" ? body.error : body?.error?.status;
     if (providerCode === "invalid_grant") return new YouTubeOAuthError("youtube_reconnect_required");
+    if (providerCode === "invalid_token") return new YouTubeOAuthError("youtube_token_already_invalid");
     if (response.status === 429 || response.status >= 500) return new YouTubeOAuthError("youtube_provider_unavailable", true);
     return new YouTubeOAuthError("youtube_provider_rejected_request");
   }
