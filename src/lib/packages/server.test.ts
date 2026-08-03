@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createNextPackageVersion, decidePackageApproval, generatePackageForUser, packageDecisionInputSchema, packageGenerationInputSchema, requestPackageApproval } from "./server";
+import { approveIdeaForPackage, createNextPackageVersion, decidePackageApproval, generatePackageForUser, packageDecisionInputSchema, packageGenerationInputSchema, requestPackageApproval } from "./server";
 import type { Database } from "@/lib/supabase/database.types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -37,7 +37,22 @@ describe("package server workflow", () => {
     await requestPackageApproval(client, "71000000-6000-4000-8000-000000000001");
     await decidePackageApproval(client, "71000000-7000-4000-8000-000000000001", "rejected", "Needs revision");
     await createNextPackageVersion(client, "71000000-6000-4000-8000-000000000001", "next-version-key");
-    expect(rpc.mock.calls.map(([name]) => name)).toEqual(["request_content_package_approval", "decide_content_package_approval", "create_next_content_package_version"]);
+    await approveIdeaForPackage(client, ideaId);
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual(["request_content_package_approval", "decide_content_package_approval", "create_next_content_package_version", "transition_idea_state"]);
+  });
+
+  it("moves a candidate through the required shortlist state before approval", async () => {
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: null, error: { message: "invalid_idea_transition" } })
+      .mockResolvedValueOnce({ data: { state: "shortlisted" }, error: null })
+      .mockResolvedValueOnce({ data: { state: "approved" }, error: null });
+    await expect(approveIdeaForPackage({ rpc } as unknown as SupabaseClient<Database>, ideaId)).resolves.toEqual({ state: "approved" });
+    expect(rpc.mock.calls.map(([, args]) => args.target_state)).toEqual(["approved", "shortlisted", "approved"]);
+  });
+
+  it("maps idea approval denial to a tenant-safe forbidden error", async () => {
+    const client = { rpc: vi.fn().mockResolvedValue({ data: null, error: { message: "idea_approval_forbidden" } }) } as unknown as SupabaseClient<Database>;
+    await expect(approveIdeaForPackage(client, ideaId)).rejects.toMatchObject({ code: "content_package_forbidden" });
   });
 
   it("validates bounded strict browser requests", () => {

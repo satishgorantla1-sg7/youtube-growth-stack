@@ -22,7 +22,7 @@ type BusyAction = { id: string; action: string } | null;
 function asRecords(value: Json): Record<string, Json>[] { return Array.isArray(value) ? value.filter((item): item is Record<string, Json> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : []; }
 function text(value: Json | undefined) { return typeof value === "string" ? value : ""; }
 
-export function PackageWorkbench({ approvedIdeas, packages, canGenerate, canDecide }: { approvedIdeas: PackageIdeaOption[]; packages: PackageVersionView[]; canGenerate: boolean; canDecide: boolean }) {
+export function PackageWorkbench({ approvedIdeas, reviewIdeas, packages, canGenerate, canDecide }: { approvedIdeas: PackageIdeaOption[]; reviewIdeas: PackageIdeaOption[]; packages: PackageVersionView[]; canGenerate: boolean; canDecide: boolean }) {
   const router = useRouter();
   const [ideaId, setIdeaId] = useState(approvedIdeas[0]?.id ?? "");
   const [busy, setBusy] = useState<BusyAction>(null);
@@ -37,6 +37,7 @@ export function PackageWorkbench({ approvedIdeas, packages, canGenerate, canDeci
       const result = await response.json().catch(() => ({})) as ApiResponse;
       if (!response.ok) throw new Error(result.error ?? "package_action_failed");
       setMessage(name === "generate" ? "Draft package generated from the idea’s saved evidence."
+        : name === "idea-approved" ? "Idea approved. It is now available for package generation."
         : name === "approval" ? "Approval requested. The package is now locked for owner/admin review."
         : name === "approved" ? "Package approved. Its immutable version is preserved."
         : name === "rejected" ? "Package rejected. A new draft version was created for revision."
@@ -52,6 +53,7 @@ export function PackageWorkbench({ approvedIdeas, packages, canGenerate, canDeci
     <section className="panel package-generator" aria-labelledby="package-generator-title">
       <div className="package-heading"><div><span className="eyebrow"><Sparkles size={13}/>Approved idea to package</span><h2 id="package-generator-title">Generate a complete content package</h2></div><span className="package-safety-badge"><ShieldCheck size={13}/>Evidence required</span></div>
       <p>Choose an approved idea. Generation is explicit and uses only that idea’s saved research evidence; it does not publish or change your channel.</p>
+      {reviewIdeas.length ? <div className="package-idea-review"><div><strong>Ideas ready for review</strong><small>An owner or admin must explicitly approve an idea before package generation.</small></div>{reviewIdeas.map((idea) => <div key={idea.id}><span><strong>{idea.title}</strong><small>{idea.evidenceCount} saved evidence source{idea.evidenceCount === 1 ? "" : "s"}</small></span>{canDecide ? <button type="button" disabled={Boolean(busy) || idea.evidenceCount === 0} onClick={() => action(idea.id, "idea-approved", `/api/packages/ideas/${idea.id}/approve`)}><Check size={15}/>Approve idea</button> : null}</div>)}</div> : null}
       {approvedIdeas.length ? <div className="package-generator-row"><label>Approved idea<select value={ideaId} onChange={(event) => setIdeaId(event.target.value)}>{approvedIdeas.map((idea) => <option key={idea.id} value={idea.id}>{idea.title} · {idea.evidenceCount} source{idea.evidenceCount === 1 ? "" : "s"}</option>)}</select></label><button type="button" disabled={!canGenerate || !ideaId || Boolean(busy)} onClick={() => action(ideaId, "generate", "/api/packages/generate", { ideaId, idempotencyKey: crypto.randomUUID() })}>{busy?.action === "generate" ? <LoaderCircle className="idea-spinner" size={16}/> : <FileStack size={16}/>}Generate draft package</button></div> : <div className="idea-empty"><strong>No approved ideas yet</strong><p>Approve an evidence-grounded idea before generating a package.</p></div>}
       {!canGenerate ? <p className="package-role-note">Only workspace owners, admins, and editors can generate or revise packages.</p> : null}
       <div className="package-export-disabled" aria-label="Export unavailable"><LockKeyhole size={15}/><span><strong>Export disabled</strong><small>Export is a separate approval-gated capability and cannot run in this release.</small></span><button type="button" disabled>Export</button></div>

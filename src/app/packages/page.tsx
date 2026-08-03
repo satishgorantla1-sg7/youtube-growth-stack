@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function PackagesPage() {
   const session = await getWorkspacePageSession("/packages");
-  let workspace = { approvedIdeas: [], packages: [] } as Awaited<ReturnType<typeof loadPackagesWorkspace>>;
+  let workspace = { approvedIdeas: [], reviewIdeas: [], packages: [] } as Awaited<ReturnType<typeof loadPackagesWorkspace>>;
   let unavailable = false;
   if (session.mode === "connected" && session.workspaceId) {
     try { workspace = await loadPackagesWorkspace(await createClient(), session.workspaceId); }
@@ -22,6 +22,6 @@ export default async function PackagesPage() {
   return <WorkspaceShell activePath="/packages" title="Content Packages" description="Build, review, and preserve evidence-grounded package versions." displayName={session.displayName} workspaceName={session.workspaceName} signOutAction={session.signOutAction} navigationCounts={session.navigationCounts} mode={session.mode}>
     {session.mode === "demo" ? <PageStateNotice title="Demo mode"><p>Connect Supabase to generate and review saved packages. Demo mode does not invent package history.</p></PageStateNotice> : null}
     {unavailable ? <PageStateNotice title="Packages are unavailable" tone="error"><p>We could not load this workspace’s approved ideas or package history. Try again shortly.</p></PageStateNotice> : null}
-    {session.mode === "connected" && !unavailable ? <PackageWorkbench approvedIdeas={workspace.approvedIdeas} packages={workspace.packages} canGenerate={canGenerate} canDecide={canDecide}/> : null}
+    {session.mode === "connected" && !unavailable ? <PackageWorkbench approvedIdeas={workspace.approvedIdeas} reviewIdeas={workspace.reviewIdeas} packages={workspace.packages} canGenerate={canGenerate} canDecide={canDecide}/> : null}
   </WorkspaceShell>;
 }

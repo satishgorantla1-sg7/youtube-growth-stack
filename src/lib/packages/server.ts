@@ -37,6 +37,7 @@ function mapError(error: unknown): ContentPackageServerError {
   if (error instanceof ContentPackageServerError) return error;
   if (error instanceof ContentPackageRepositoryError) return new ContentPackageServerError(error.code === "content_package_unavailable" ? "package_action_failed" : error.code);
   const message = error instanceof Error ? error.message : typeof error === "object" && error && "message" in error ? String(error.message) : "";
+  if (message.includes("idea_approval_forbidden") || message.includes("idea_transition_forbidden")) return new ContentPackageServerError("content_package_forbidden");
   const known = ["content_package_forbidden", "approved_idea_required", "content_package_conflict", "content_package_not_draft", "content_package_not_versionable", "approval_not_pending"] as const;
   return new ContentPackageServerError(known.find((code) => message.includes(code)) ?? "package_action_failed");
 }
@@ -76,4 +77,16 @@ export function decidePackageApproval(client: SupabaseClient<Database>, approval
 }
 export function createNextPackageVersion(client: SupabaseClient<Database>, packageId: string, idempotencyKey: string) {
   return callAction(client, "create_next_content_package_version", { target_package_id: packageId, request_idempotency_key: idempotencyKey });
+}
+export async function approveIdeaForPackage(client: SupabaseClient<Database>, ideaId: string) {
+  const rpcClient = client as unknown as AuthenticatedRpcClient;
+  const approve = () => rpcClient.rpc("transition_idea_state", { target_idea_id: ideaId, target_state: "approved", transition_note: "Approved for content package generation." });
+  const first = await approve();
+  if (!first.error) return first.data;
+  if (!first.error.message?.includes("invalid_idea_transition")) throw mapError(first.error);
+  const shortlisted = await rpcClient.rpc("transition_idea_state", { target_idea_id: ideaId, target_state: "shortlisted", transition_note: "Shortlisted for content package review." });
+  if (shortlisted.error) throw mapError(shortlisted.error);
+  const approved = await approve();
+  if (approved.error) throw mapError(approved.error);
+  return approved.data;
 }
