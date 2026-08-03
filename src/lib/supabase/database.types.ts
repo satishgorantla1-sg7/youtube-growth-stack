@@ -220,6 +220,45 @@ export type Database = {
           },
         ]
       }
+      content_package_evidence: {
+        Row: {
+          content_package_id: string
+          created_at: string
+          research_run_id: string
+          research_source_id: string
+          workspace_id: string
+        }
+        Insert: {
+          content_package_id: string
+          created_at?: string
+          research_run_id: string
+          research_source_id: string
+          workspace_id: string
+        }
+        Update: {
+          content_package_id?: string
+          created_at?: string
+          research_run_id?: string
+          research_source_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_package_evidence_package_fk"
+            columns: ["workspace_id", "research_run_id", "content_package_id"]
+            isOneToOne: false
+            referencedRelation: "content_packages"
+            referencedColumns: ["workspace_id", "research_run_id", "id"]
+          },
+          {
+            foreignKeyName: "content_package_evidence_source_fk"
+            columns: ["workspace_id", "research_run_id", "research_source_id"]
+            isOneToOne: false
+            referencedRelation: "research_sources"
+            referencedColumns: ["workspace_id", "research_run_id", "id"]
+          },
+        ]
+      }
       content_packages: {
         Row: {
           citations: Json
@@ -228,8 +267,13 @@ export type Database = {
           hooks: Json
           id: string
           idea_id: string
+          idempotency_key: string | null
+          model_version: string | null
           outline: Json
+          prompt_version: string | null
+          research_run_id: string | null
           script: string | null
+          source_package_id: string | null
           state: string
           thumbnail_concepts: Json
           titles: Json
@@ -244,8 +288,13 @@ export type Database = {
           hooks?: Json
           id?: string
           idea_id: string
+          idempotency_key?: string | null
+          model_version?: string | null
           outline?: Json
+          prompt_version?: string | null
+          research_run_id?: string | null
           script?: string | null
+          source_package_id?: string | null
           state?: string
           thumbnail_concepts?: Json
           titles?: Json
@@ -260,8 +309,13 @@ export type Database = {
           hooks?: Json
           id?: string
           idea_id?: string
+          idempotency_key?: string | null
+          model_version?: string | null
           outline?: Json
+          prompt_version?: string | null
+          research_run_id?: string | null
           script?: string | null
+          source_package_id?: string | null
           state?: string
           thumbnail_concepts?: Json
           titles?: Json
@@ -285,11 +339,32 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "content_packages_source_fk"
+            columns: ["workspace_id", "idea_id", "source_package_id"]
+            isOneToOne: false
+            referencedRelation: "content_packages"
+            referencedColumns: ["workspace_id", "idea_id", "id"]
+          },
+          {
             foreignKeyName: "content_packages_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_packages_workspace_idea_fk"
+            columns: ["workspace_id", "idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "content_packages_workspace_research_idea_fk"
+            columns: ["workspace_id", "research_run_id", "idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["workspace_id", "research_run_id", "id"]
           },
         ]
       }
@@ -1733,6 +1808,22 @@ export type Database = {
           workspace_id: string
         }[]
       }
+      create_content_package_version: {
+        Args: {
+          generated_package: Json
+          request_idempotency_key: string
+          request_model_version: string
+          request_prompt_version: string
+          target_idea_id: string
+          target_requested_by: string
+          target_workspace_id: string
+        }
+        Returns: Json
+      }
+      create_next_content_package_version: {
+        Args: { request_idempotency_key: string; target_package_id: string }
+        Returns: Json
+      }
       create_research_run: {
         Args: {
           request_estimated_credits: number
@@ -1776,6 +1867,14 @@ export type Database = {
       }
       create_youtube_revocation_approval: {
         Args: { target_workspace_id: string }
+        Returns: Json
+      }
+      decide_content_package_approval: {
+        Args: {
+          approval_decision: string
+          approval_note?: string
+          target_approval_id: string
+        }
         Returns: Json
       }
       decide_research_approval: {
@@ -1914,6 +2013,10 @@ export type Database = {
           target_sync_run_id: string
         }
         Returns: boolean
+      }
+      request_content_package_approval: {
+        Args: { target_package_id: string }
+        Returns: Json
       }
       request_youtube_sync: {
         Args: {
