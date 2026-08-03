@@ -1,5 +1,7 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env";
+import { SupabaseYouTubeTokenLifecycleRepository } from "./youtube-connection-repository";
+import { GoogleYouTubeOAuthProvider, readYouTubeOAuthConfig, YouTubeOAuthError } from "./youtube-oauth";
 import { type YouTubeQuotaCharge, YouTubeSyncError } from "./youtube-sync-contracts";
 import { YouTubeReadOnlyProvider, type YouTubeAttemptGuard } from "./youtube-sync-provider";
 import {
@@ -9,11 +11,13 @@ import {
   type YouTubeSyncRepository,
   type YouTubeSyncRpcClient,
 } from "./youtube-sync-repository";
+import { YouTubeTokenLifecycle } from "./youtube-token-lifecycle";
 import { readTokenCipher, type VersionedTokenCipher } from "./youtube-token-crypto";
 
 type SyncResult = "idle" | "completed" | "failed" | "lease_lost";
 type SyncProvider = Pick<YouTubeReadOnlyProvider, "listManagedChannels" | "listUploadIds" | "listVideos">;
 type ProviderFactory = (accessToken: string, beforeRequest: YouTubeAttemptGuard) => SyncProvider;
+type SyncTokenLifecycle = Pick<YouTubeTokenLifecycle, "accessForSync">;
 
 const LEASE_SECONDS = 180;
 const SAFE_CONTROL_CODES = [
@@ -21,6 +25,11 @@ const SAFE_CONTROL_CODES = [
   "provider_daily_quota_exceeded",
   "workspace_daily_quota_exceeded",
   "provider_rate_limit_exceeded",
+] as const;
+const SAFE_LIFECYCLE_CODES = [
+  "youtube_token_refresh_locked",
+  "youtube_provider_unavailable",
+  "youtube_reconnect_required",
 ] as const;
 
 function operationFor(url: URL): YouTubeQuotaCharge["operation"] {
@@ -34,6 +43,9 @@ function safeErrorCode(error: unknown): string {
   if (error instanceof YouTubeSyncError) {
     return error.code === "youtube_http_401" ? "youtube_reconnect_required" : error.code;
   }
+  if (error instanceof YouTubeOAuthError) {
+    return SAFE_LIFECYCLE_CODES.find((code) => code === error.code) ?? "youtube_sync_failed";
+  }
   const message = error instanceof Error ? error.message : "";
   if (message.includes("invalid_or_expired_sync_lease") || message.includes("youtube_sync_lease_required")) return "lease_lost";
   if (["token_decryption_failed", "unknown_token_key_version", "invalid_token_envelope", "youtube_credential_version_mismatch", "youtube_cursor_decryption_failed", "unknown_youtube_cursor_format", "invalid_youtube_cursor_envelope"].some((code) => message.includes(code))) {
@@ -42,10 +54,9 @@ function safeErrorCode(error: unknown): string {
   return SAFE_CONTROL_CODES.find((code) => message.includes(code)) ?? "youtube_sync_failed";
 }
 
-function decryptAccessToken(lease: YouTubeSyncLease, cipher: VersionedTokenCipher): string {
+function assertCredentialVersion(lease: YouTubeSyncLease): void {
   const envelopeVersion = lease.encryptedCredentials.split(".")[1];
   if (envelopeVersion !== lease.credentialVersion) throw new Error("youtube_credential_version_mismatch");
-  return cipher.decrypt(lease.encryptedCredentials).accessToken;
 }
 
 function defaultProvider(accessToken: string, beforeRequest: YouTubeAttemptGuard): SyncProvider {
@@ -56,6 +67,7 @@ export async function runYouTubeSyncOnce(
   repository: YouTubeSyncRepository,
   cipher: VersionedTokenCipher,
   workerId: string,
+  tokenLifecycle: SyncTokenLifecycle,
   createProvider: ProviderFactory = defaultProvider,
 ): Promise<SyncResult> {
   const lease = await repository.lease(workerId, LEASE_SECONDS);
@@ -75,15 +87,17 @@ export async function runYouTubeSyncOnce(
   };
 
   try {
-    const provider = createProvider(decryptAccessToken(lease, cipher), beforeRequest);
+    if (lease.cursorInitialized && (lease.encryptedPageToken === null || lease.pageTokenVersion === null)) {
+      await repository.finish(lease, { state: "completed", pagesFetched, itemsFetched });
+      return "completed";
+    }
+    assertCredentialVersion(lease);
+    const access = await tokenLifecycle.accessForSync(lease.workspaceId, lease.encryptedCredentials);
+    const provider = createProvider(access.accessToken, beforeRequest);
     let pageToken: string | undefined;
     let pendingChannel: YouTubeSyncPage["channels"][number] | undefined;
     if (lease.cursorInitialized) {
-      if (lease.encryptedPageToken === null || lease.pageTokenVersion === null) {
-        await repository.finish(lease, { state: "completed", pagesFetched, itemsFetched });
-        return "completed";
-      }
-      pageToken = cipher.decryptPageToken(lease.encryptedPageToken, lease.pageTokenVersion);
+      pageToken = cipher.decryptPageToken(lease.encryptedPageToken!, lease.pageTokenVersion!);
     } else {
       if (pagesFetched > 0) throw new YouTubeSyncError("youtube_sync_cursor_invalid", false);
       const channelPage = await provider.listManagedChannels({
@@ -157,16 +171,25 @@ export async function runYouTubeSyncOnce(
   }
 }
 
-export function createProductionYouTubeSyncRepository(): SupabaseYouTubeSyncRepository {
+export function createProductionYouTubeSyncDependencies() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = serverEnv().SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("youtube_worker_configuration_missing");
+  const oauthConfig = readYouTubeOAuthConfig(process.env);
+  const cipher = readTokenCipher();
+  if (!url || !key || !oauthConfig || !cipher) throw new Error("youtube_worker_configuration_missing");
   const client = createSupabaseClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-  return new SupabaseYouTubeSyncRepository(client as unknown as YouTubeSyncRpcClient);
+  return {
+    repository: new SupabaseYouTubeSyncRepository(client as unknown as YouTubeSyncRpcClient),
+    cipher,
+    tokenLifecycle: new YouTubeTokenLifecycle(
+      new SupabaseYouTubeTokenLifecycleRepository(client as never),
+      new GoogleYouTubeOAuthProvider(oauthConfig),
+      cipher,
+    ),
+  };
 }
 
 export async function runProductionYouTubeSyncOnce(workerId: string): Promise<SyncResult> {
-  const cipher = readTokenCipher();
-  if (!cipher) throw new Error("youtube_worker_configuration_missing");
-  return runYouTubeSyncOnce(createProductionYouTubeSyncRepository(), cipher, workerId);
+  const dependencies = createProductionYouTubeSyncDependencies();
+  return runYouTubeSyncOnce(dependencies.repository, dependencies.cipher, workerId, dependencies.tokenLifecycle);
 }

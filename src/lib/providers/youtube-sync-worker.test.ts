@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+import { YouTubeOAuthError } from "./youtube-oauth";
 import { YouTubeSyncError } from "./youtube-sync-contracts";
 import { YouTubeReadOnlyProvider, type YouTubeAttemptGuard } from "./youtube-sync-provider";
 import type { YouTubeSyncLease, YouTubeSyncPage, YouTubeSyncRepository } from "./youtube-sync-repository";
@@ -83,13 +84,24 @@ function video(id: string) {
   };
 }
 
-function providerFactory(options: { pages?: string[][]; fail?: YouTubeSyncError } = {}) {
+function tokenLifecycle(accessToken = "access-secret") {
+  return {
+    accessForSync: vi.fn(async (_workspaceId: string, encryptedCredentials: string) => ({
+      accessToken,
+      encryptedCredentials,
+      expiresAt: "2026-08-02T12:00:00.000Z",
+      refreshed: accessToken !== "access-secret",
+    })),
+  };
+}
+
+function providerFactory(options: { pages?: string[][]; fail?: YouTubeSyncError; expectedToken?: string } = {}) {
   const batches: string[][] = [];
   const pageTokens: Array<string | undefined> = [];
   let pageIndex = 0;
   const factory = vi.fn((token: string, guard: YouTubeAttemptGuard) => ({
     listManagedChannels: vi.fn(async () => {
-      expect(token).toBe("access-secret");
+      expect(token).toBe(options.expectedToken ?? "access-secret");
       await guard({ url: new URL("https://www.googleapis.com/youtube/v3/channels"), attempt: 1 });
       if (options.fail) throw options.fail;
       return { items: [selectedChannel()], nextPageToken: null, quota: { operation: "channels.list" as const, units: 1, requestIdempotencyKey: "ignored" } };
@@ -115,16 +127,57 @@ describe("runYouTubeSyncOnce", () => {
   it("does not construct a provider when the queue is idle", async () => {
     const repo = repository(null);
     const provider = providerFactory();
-    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", provider.factory)).resolves.toBe("idle");
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", tokenLifecycle(), provider.factory)).resolves.toBe("idle");
     expect(provider.factory).not.toHaveBeenCalled();
     expect(repo.recordQuota).not.toHaveBeenCalled();
+  });
+
+  it("obtains a lifecycle-vetted fresh token before provider construction", async () => {
+    const active = lease({ maxPages: 1, maxItems: 2 });
+    const repo = repository(active);
+    const lifecycle = tokenLifecycle();
+    const provider = providerFactory();
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", lifecycle, provider.factory)).resolves.toBe("completed");
+    expect(lifecycle.accessForSync).toHaveBeenCalledWith(active.workspaceId, active.encryptedCredentials);
+    expect(provider.factory).toHaveBeenCalledWith("access-secret", expect.any(Function));
+    expect(repo.recordQuota).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["near-expiry", "expired"])("uses the refreshed token for a %s credential", async () => {
+    const active = lease({ maxPages: 1, maxItems: 2 });
+    const repo = repository(active);
+    const lifecycle = tokenLifecycle("refreshed-access");
+    const provider = providerFactory({ expectedToken: "refreshed-access" });
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", lifecycle, provider.factory)).resolves.toBe("completed");
+    expect(provider.factory).toHaveBeenCalledWith("refreshed-access", expect.any(Function));
+    expect(JSON.stringify(vi.mocked(provider.factory).mock.calls)).not.toContain("access-secret");
+  });
+
+  it.each([
+    ["locked refresh", new YouTubeOAuthError("youtube_token_refresh_locked", true), "youtube_token_refresh_locked"],
+    ["transient refresh failure", new YouTubeOAuthError("youtube_provider_unavailable", true), "youtube_provider_unavailable"],
+    ["invalid grant", new YouTubeOAuthError("youtube_reconnect_required"), "youtube_reconnect_required"],
+  ])("blocks provider construction after %s", async (_label, error, safeCode) => {
+    const active = lease();
+    const repo = repository(active);
+    const lifecycle = { accessForSync: vi.fn().mockRejectedValue(error) };
+    const provider = providerFactory();
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", lifecycle, provider.factory)).resolves.toBe("failed");
+    expect(provider.factory).not.toHaveBeenCalled();
+    expect(repo.recordQuota).not.toHaveBeenCalled();
+    expect(repo.finish).toHaveBeenCalledWith(active, {
+      state: "failed",
+      pagesFetched: 0,
+      itemsFetched: 0,
+      errorCode: safeCode,
+    });
   });
 
   it("syncs only the selected channel with bounded pages and atomic persistence", async () => {
     const active = lease({ maxPages: 2, maxItems: 10 });
     const repo = repository(active);
     const provider = providerFactory({ pages: [["v1"], ["v2"]] });
-    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", provider.factory)).resolves.toBe("completed");
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", tokenLifecycle(), provider.factory)).resolves.toBe("completed");
     expect(repo.persistPage).toHaveBeenCalledTimes(2);
     const firstPage = vi.mocked(repo.persistPage).mock.calls[0][1] as YouTubeSyncPage;
     const secondPage = vi.mocked(repo.persistPage).mock.calls[1][1] as YouTubeSyncPage;
@@ -138,7 +191,7 @@ describe("runYouTubeSyncOnce", () => {
     const active = lease({ maxPages: 1, maxItems: 80 });
     const repo = repository(active);
     const provider = providerFactory({ pages: [ids] });
-    await runYouTubeSyncOnce(repo, cipher, "worker-1", provider.factory);
+    await runYouTubeSyncOnce(repo, cipher, "worker-1", tokenLifecycle(), provider.factory);
     expect(provider.batches.map((batch) => batch.length)).toEqual([50, 25]);
     expect(provider.batches.flat()).toHaveLength(75);
   });
@@ -153,7 +206,7 @@ describe("runYouTubeSyncOnce", () => {
       .mockResolvedValueOnce(new Response("{}", { status: 500 }))
       .mockResolvedValueOnce(new Response("{}", { status: 500 }));
     const factory = (token: string, guard: YouTubeAttemptGuard) => new YouTubeReadOnlyProvider(token, fetcher, vi.fn(async () => undefined), undefined, guard);
-    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", factory)).resolves.toBe("failed");
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", tokenLifecycle(), factory)).resolves.toBe("failed");
     expect(repo.recordQuota).toHaveBeenCalledTimes(5);
     expect(vi.mocked(repo.recordQuota).mock.calls.every(([, charge]) => charge.units === 1)).toBe(true);
     expect(new Set(vi.mocked(repo.recordQuota).mock.calls.map(([, charge]) => charge.requestIdempotencyKey)).size).toBe(5);
@@ -165,7 +218,7 @@ describe("runYouTubeSyncOnce", () => {
     const provider = providerFactory({ fail: new YouTubeSyncError("youtube_http_401", false, 1) });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", provider.factory)).resolves.toBe("failed");
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", tokenLifecycle(), provider.factory)).resolves.toBe("failed");
     expect(repo.finish).toHaveBeenCalledWith(active, expect.objectContaining({ state: "failed", errorCode: "youtube_reconnect_required" }));
     expect(JSON.stringify(vi.mocked(repo.finish).mock.calls)).not.toContain("access-secret");
     expect(errorSpy).not.toHaveBeenCalled();
@@ -179,7 +232,7 @@ describe("runYouTubeSyncOnce", () => {
     const active = lease({ pagesFetched: 1, itemsFetched: 2, cursorInitialized: true, ...cursor });
     const repo = repository(active);
     const provider = providerFactory({ pages: [["v2"]] });
-    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", provider.factory)).resolves.toBe("completed");
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", tokenLifecycle(), provider.factory)).resolves.toBe("completed");
     expect(provider.pageTokens).toEqual(["resume-page-2"]);
     const createdProvider = provider.factory.mock.results[0].value;
     expect(createdProvider.listManagedChannels).not.toHaveBeenCalled();
@@ -191,11 +244,10 @@ describe("runYouTubeSyncOnce", () => {
     const active = lease({ pagesFetched: 1, itemsFetched: 2, cursorInitialized: true });
     const repo = repository(active);
     const provider = providerFactory();
-    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", provider.factory)).resolves.toBe("completed");
-    expect(provider.factory).toHaveBeenCalledOnce();
-    const createdProvider = provider.factory.mock.results[0].value;
-    expect(createdProvider.listManagedChannels).not.toHaveBeenCalled();
-    expect(createdProvider.listUploadIds).not.toHaveBeenCalled();
+    const lifecycle = tokenLifecycle();
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", lifecycle, provider.factory)).resolves.toBe("completed");
+    expect(lifecycle.accessForSync).not.toHaveBeenCalled();
+    expect(provider.factory).not.toHaveBeenCalled();
     expect(repo.persistPage).not.toHaveBeenCalled();
     expect(repo.finish).toHaveBeenCalledWith(active, { state: "completed", pagesFetched: 1, itemsFetched: 2 });
   });
@@ -204,7 +256,7 @@ describe("runYouTubeSyncOnce", () => {
     const active = lease();
     const repo = repository(active, { persistPage: vi.fn(async () => { throw new Error("invalid_or_expired_sync_lease"); }) });
     const provider = providerFactory();
-    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", provider.factory)).resolves.toBe("lease_lost");
+    await expect(runYouTubeSyncOnce(repo, cipher, "worker-1", tokenLifecycle(), provider.factory)).resolves.toBe("lease_lost");
     expect(repo.finish).not.toHaveBeenCalled();
   });
 });
