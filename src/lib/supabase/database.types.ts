@@ -151,40 +151,64 @@ export type Database = {
       }
       channels: {
         Row: {
+          account_kind: string
           connection_state: string
+          country_code: string | null
           created_at: string
+          description: string | null
           external_id: string
           handle: string | null
           id: string
+          is_selected: boolean
           last_synced_at: string | null
           provider: string
+          published_at: string | null
           thumbnail_url: string | null
           title: string
+          updated_at: string
+          uploads_playlist_id: string | null
           workspace_id: string
+          youtube_connection_id: string | null
         }
         Insert: {
+          account_kind?: string
           connection_state?: string
+          country_code?: string | null
           created_at?: string
+          description?: string | null
           external_id: string
           handle?: string | null
           id?: string
+          is_selected?: boolean
           last_synced_at?: string | null
           provider?: string
+          published_at?: string | null
           thumbnail_url?: string | null
           title: string
+          updated_at?: string
+          uploads_playlist_id?: string | null
           workspace_id: string
+          youtube_connection_id?: string | null
         }
         Update: {
+          account_kind?: string
           connection_state?: string
+          country_code?: string | null
           created_at?: string
+          description?: string | null
           external_id?: string
           handle?: string | null
           id?: string
+          is_selected?: boolean
           last_synced_at?: string | null
           provider?: string
+          published_at?: string | null
           thumbnail_url?: string | null
           title?: string
+          updated_at?: string
+          uploads_playlist_id?: string | null
           workspace_id?: string
+          youtube_connection_id?: string | null
         }
         Relationships: [
           {
@@ -1152,6 +1176,309 @@ export type Database = {
           },
         ]
       }
+      youtube_channel_snapshots: {
+        Row: {
+          captured_at: string
+          channel_id: string
+          created_at: string
+          hidden_subscriber_count: boolean
+          id: number
+          source_etag: string | null
+          subscriber_count: number | null
+          video_count: number | null
+          view_count: number | null
+          workspace_id: string
+        }
+        Insert: {
+          captured_at: string
+          channel_id: string
+          created_at?: string
+          hidden_subscriber_count?: boolean
+          id?: never
+          source_etag?: string | null
+          subscriber_count?: number | null
+          video_count?: number | null
+          view_count?: number | null
+          workspace_id: string
+        }
+        Update: {
+          captured_at?: string
+          channel_id?: string
+          created_at?: string
+          hidden_subscriber_count?: boolean
+          id?: never
+          source_etag?: string | null
+          subscriber_count?: number | null
+          video_count?: number | null
+          view_count?: number | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "youtube_channel_snapshots_workspace_channel_fk"
+            columns: ["workspace_id", "channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "youtube_channel_snapshots_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      youtube_quota_ledger: {
+        Row: {
+          id: number
+          occurred_at: string
+          operation: string
+          quota_date: string | null
+          quota_units: number
+          request_idempotency_key: string
+          sync_run_id: string
+          workspace_id: string
+        }
+        Insert: {
+          id?: never
+          occurred_at?: string
+          operation: string
+          quota_date?: string | null
+          quota_units: number
+          request_idempotency_key: string
+          sync_run_id: string
+          workspace_id: string
+        }
+        Update: {
+          id?: never
+          occurred_at?: string
+          operation?: string
+          quota_date?: string | null
+          quota_units?: number
+          request_idempotency_key?: string
+          sync_run_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "youtube_quota_ledger_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "youtube_quota_ledger_workspace_sync_fk"
+            columns: ["workspace_id", "sync_run_id"]
+            isOneToOne: false
+            referencedRelation: "youtube_sync_runs"
+            referencedColumns: ["workspace_id", "id"]
+          },
+        ]
+      }
+      youtube_sync_runs: {
+        Row: {
+          attempt_count: number
+          channel_id: string | null
+          completed_at: string | null
+          correlation_id: string
+          created_at: string
+          id: string
+          idempotency_key: string
+          items_fetched: number
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          max_items: number
+          max_pages: number
+          pages_fetched: number
+          quota_units: number
+          started_at: string | null
+          state: string
+          updated_at: string
+          workspace_id: string
+          youtube_connection_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          channel_id?: string | null
+          completed_at?: string | null
+          correlation_id?: string
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          items_fetched?: number
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          max_items: number
+          max_pages: number
+          pages_fetched?: number
+          quota_units?: number
+          started_at?: string | null
+          state?: string
+          updated_at?: string
+          workspace_id: string
+          youtube_connection_id: string
+        }
+        Update: {
+          attempt_count?: number
+          channel_id?: string | null
+          completed_at?: string | null
+          correlation_id?: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          items_fetched?: number
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          max_items?: number
+          max_pages?: number
+          pages_fetched?: number
+          quota_units?: number
+          started_at?: string | null
+          state?: string
+          updated_at?: string
+          workspace_id?: string
+          youtube_connection_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "youtube_sync_runs_workspace_channel_fk"
+            columns: ["workspace_id", "channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "youtube_sync_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      youtube_video_snapshots: {
+        Row: {
+          captured_at: string
+          comment_count: number | null
+          created_at: string
+          id: number
+          like_count: number | null
+          source_etag: string | null
+          video_id: string
+          view_count: number | null
+          workspace_id: string
+        }
+        Insert: {
+          captured_at: string
+          comment_count?: number | null
+          created_at?: string
+          id?: never
+          like_count?: number | null
+          source_etag?: string | null
+          video_id: string
+          view_count?: number | null
+          workspace_id: string
+        }
+        Update: {
+          captured_at?: string
+          comment_count?: number | null
+          created_at?: string
+          id?: never
+          like_count?: number | null
+          source_etag?: string | null
+          video_id?: string
+          view_count?: number | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "youtube_video_snapshots_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "youtube_video_snapshots_workspace_video_fk"
+            columns: ["workspace_id", "video_id"]
+            isOneToOne: false
+            referencedRelation: "youtube_videos"
+            referencedColumns: ["workspace_id", "id"]
+          },
+        ]
+      }
+      youtube_videos: {
+        Row: {
+          channel_id: string
+          created_at: string
+          description: string | null
+          duration_seconds: number | null
+          etag: string | null
+          external_id: string
+          id: string
+          live_broadcast_content: string | null
+          privacy_status: string | null
+          published_at: string | null
+          thumbnail_url: string | null
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          description?: string | null
+          duration_seconds?: number | null
+          etag?: string | null
+          external_id: string
+          id?: string
+          live_broadcast_content?: string | null
+          privacy_status?: string | null
+          published_at?: string | null
+          thumbnail_url?: string | null
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          description?: string | null
+          duration_seconds?: number | null
+          etag?: string | null
+          external_id?: string
+          id?: string
+          live_broadcast_content?: string | null
+          privacy_status?: string | null
+          published_at?: string | null
+          thumbnail_url?: string | null
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "youtube_videos_workspace_channel_fk"
+            columns: ["workspace_id", "channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "youtube_videos_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1184,9 +1511,41 @@ export type Database = {
         }
         Returns: Json
       }
+      begin_youtube_sync: {
+        Args: {
+          request_idempotency_key: string
+          request_max_items?: number
+          request_max_pages?: number
+          target_channel_id: string
+          target_connection_id: string
+          target_workspace_id: string
+        }
+        Returns: Json
+      }
       cancel_research_run: {
         Args: { cancellation_note?: string; target_run_id: string }
         Returns: Json
+      }
+      complete_youtube_revocation: {
+        Args: { target_lease_token: string; target_workspace_id: string }
+        Returns: undefined
+      }
+      complete_youtube_token_refresh: {
+        Args: {
+          target_credential_version: string
+          target_encrypted_credentials: string
+          target_expires_at: string
+          target_lease_token: string
+          target_workspace_id: string
+        }
+        Returns: undefined
+      }
+      consume_youtube_oauth_state: {
+        Args: { target_state_hash: string }
+        Returns: {
+          user_id: string
+          workspace_id: string
+        }[]
       }
       create_research_run: {
         Args: {
@@ -1216,6 +1575,23 @@ export type Database = {
         Args: { workspace_name: string; workspace_slug: string }
         Returns: string
       }
+      create_youtube_connection_approval: {
+        Args: { target_workspace_id: string }
+        Returns: Json
+      }
+      create_youtube_oauth_state: {
+        Args: {
+          target_approval_id: string
+          target_expires_at: string
+          target_state_hash: string
+          target_workspace_id: string
+        }
+        Returns: undefined
+      }
+      create_youtube_revocation_approval: {
+        Args: { target_workspace_id: string }
+        Returns: Json
+      }
       decide_research_approval: {
         Args: {
           approval_decision: string
@@ -1225,6 +1601,14 @@ export type Database = {
         Returns: Json
       }
       decide_research_approval_unchecked: {
+        Args: {
+          approval_decision: string
+          approval_note?: string
+          target_approval_id: string
+        }
+        Returns: Json
+      }
+      decide_youtube_connection_approval: {
         Args: {
           approval_decision: string
           approval_note?: string
@@ -1253,19 +1637,118 @@ export type Database = {
         }
         Returns: undefined
       }
+      finish_youtube_sync: {
+        Args: {
+          target_error_code?: string
+          target_items_fetched: number
+          target_lease_token: string
+          target_pages_fetched: number
+          target_state: string
+          target_sync_run_id: string
+        }
+        Returns: undefined
+      }
       lease_research_job: {
         Args: { lease_seconds?: number; worker_id: string }
+        Returns: Json
+      }
+      lease_youtube_revocation: {
+        Args: {
+          target_approval_id: string
+          target_lease_expires_at: string
+          target_lease_token: string
+          target_workspace_id: string
+        }
+        Returns: {
+          credential_version: string
+          encrypted_credentials: string
+          lease_token: string
+          workspace_id: string
+        }[]
+      }
+      lease_youtube_sync: {
+        Args: { lease_seconds?: number; worker_id: string }
+        Returns: Json
+      }
+      lease_youtube_token_refresh: {
+        Args: {
+          target_lease_expires_at: string
+          target_lease_token: string
+          target_workspace_id: string
+        }
+        Returns: {
+          credential_version: string
+          encrypted_credentials: string
+          lease_token: string
+          workspace_id: string
+        }[]
+      }
+      mark_youtube_reconnect_required: {
+        Args: {
+          target_lease_token: string
+          target_reason: string
+          target_workspace_id: string
+        }
+        Returns: undefined
+      }
+      persist_youtube_sync_page: {
+        Args: {
+          channel_rows?: Json
+          target_cursor_initialized?: boolean
+          target_encrypted_page_token?: string
+          target_lease_token: string
+          target_page_token_version?: number
+          target_sync_run_id: string
+          video_rows?: Json
+        }
+        Returns: Json
+      }
+      record_youtube_quota: {
+        Args: {
+          request_idempotency_key: string
+          target_lease_token: string
+          target_operation: string
+          target_quota_units: number
+          target_sync_run_id: string
+        }
+        Returns: boolean
+      }
+      request_youtube_sync: {
+        Args: {
+          target_channel_id: string
+          target_idempotency_key: string
+          target_max_items?: number
+          target_max_pages?: number
+          target_workspace_id: string
+        }
         Returns: Json
       }
       research_cancellation_requested: {
         Args: { target_job_id: string; target_lease_token: string }
         Returns: boolean
       }
+      select_youtube_channel: {
+        Args: { target_channel_id: string; target_workspace_id: string }
+        Returns: Json
+      }
       settle_research_usage: {
         Args: {
           target_actual_credits: number
           target_job_id: string
           target_lease_token: string
+        }
+        Returns: undefined
+      }
+      store_youtube_connection: {
+        Args: {
+          target_channels: Json
+          target_credential_version: string
+          target_encrypted_credentials: string
+          target_expires_at: string
+          target_provider: string
+          target_scopes: string[]
+          target_state_hash: string
+          target_workspace_id: string
         }
         Returns: undefined
       }
@@ -1404,3 +1887,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+
