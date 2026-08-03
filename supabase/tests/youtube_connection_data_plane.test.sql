@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(67);
+select plan(75);
 
 select has_table('app_private', 'youtube_connections', 'private YouTube connection table exists'); -- 1
 select has_table('app_private', 'youtube_oauth_states', 'private one-use OAuth state table exists'); -- 2
@@ -15,13 +15,15 @@ insert into auth.users (
   raw_app_meta_data, raw_user_meta_data, created_at, updated_at
 ) values
   ('41000000-0000-4000-8000-000000000001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'youtube-one@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
-  ('42000000-0000-4000-8000-000000000002', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'youtube-two@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now());
+  ('42000000-0000-4000-8000-000000000002', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'youtube-two@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
+  ('43000000-0000-4000-8000-000000000003', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'youtube-viewer@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now());
 insert into public.workspaces (id, name, slug, owner_id) values
   ('41000000-1000-4000-8000-000000000001', 'YouTube One', 'youtube-one', '41000000-0000-4000-8000-000000000001'),
   ('42000000-2000-4000-8000-000000000002', 'YouTube Two', 'youtube-two', '42000000-0000-4000-8000-000000000002');
 insert into public.workspace_members (workspace_id, user_id, role) values
   ('41000000-1000-4000-8000-000000000001', '41000000-0000-4000-8000-000000000001', 'owner'),
-  ('42000000-2000-4000-8000-000000000002', '42000000-0000-4000-8000-000000000002', 'owner');
+  ('42000000-2000-4000-8000-000000000002', '42000000-0000-4000-8000-000000000002', 'owner'),
+  ('41000000-1000-4000-8000-000000000001', '43000000-0000-4000-8000-000000000003', 'viewer');
 insert into public.approvals (
   id, workspace_id, entity_type, entity_id, state, risk_summary,
   requested_by, decided_by, decided_at
@@ -84,11 +86,17 @@ select throws_ok(
     array['https://www.googleapis.com/auth/youtube.force-ssl'], now() + interval '1 minute',
     '[{"externalId":"UC-one-personal","title":"One Personal","handle":"@one","thumbnailUrl":"https://example.test/one.jpg"}]'::jsonb)$$,
   '22023', 'youtube_readonly_scope_required', 'write-capable YouTube scope is rejected'); -- 17
+select throws_ok(
+  $$select public.store_youtube_connection(
+    '41000000-1000-4000-8000-000000000001', repeat('a', 64), 'youtube', 'cipher-one', 'v1',
+    array['https://www.googleapis.com/auth/youtube.readonly'], now() + interval '1 minute',
+    '[{"externalId":"UC-one-personal","title":"One Personal","uploadsPlaylistId":"../unsafe"}]'::jsonb)$$,
+  '22023', 'youtube_channels_invalid', 'unsafe uploads playlist identifier is rejected');
 select lives_ok(
   $$select public.store_youtube_connection(
     '41000000-1000-4000-8000-000000000001', repeat('a', 64), 'youtube', 'cipher-one', 'v1',
     array['https://www.googleapis.com/auth/youtube.readonly'], now() + interval '1 minute',
-    '[{"externalId":"UC-one-personal","title":"One Personal","handle":"@one","thumbnailUrl":"https://example.test/one.jpg"}]'::jsonb)$$,
+    '[{"externalId":"UC-one-personal","title":"One Personal","handle":"@one","thumbnailUrl":"https://example.test/one.jpg","uploadsPlaylistId":"UU-one-personal"}]'::jsonb)$$,
   'consumed approval context stores a read-only connection'); -- 18
 
 reset role;
@@ -114,7 +122,7 @@ select lives_ok(
   $$select public.store_youtube_connection(
     '42000000-2000-4000-8000-000000000002', repeat('b', 64), 'youtube', 'cipher-two', 'v1',
     array['https://www.googleapis.com/auth/youtube.readonly'], now() + interval '1 hour',
-    '[{"externalId":"UC-two-brand","title":"Two Brand","handle":"@twobrand","thumbnailUrl":null}]'::jsonb)$$,
+    '[{"externalId":"UC-two-brand","title":"Two Brand","handle":"@twobrand","thumbnailUrl":null,"uploadsPlaylistId":"UU-two-brand"}]'::jsonb)$$,
   'tenant two stores an isolated connection'); -- 23
 
 reset role;
@@ -123,10 +131,10 @@ select set_config('test.youtube_conn_one', (select id::text from app_private.you
 select set_config('test.youtube_conn_two', (select id::text from app_private.youtube_connections
   where workspace_id = '42000000-2000-4000-8000-000000000002'), true);
 update public.channels set id = '41000000-3000-4000-8000-000000000001',
-  account_kind = 'personal', uploads_playlist_id = 'UU-one-personal'
+  account_kind = 'personal'
   where workspace_id = '41000000-1000-4000-8000-000000000001';
 update public.channels set id = '42000000-3000-4000-8000-000000000002',
-  account_kind = 'brand', uploads_playlist_id = 'UU-two-brand'
+  account_kind = 'brand'
   where workspace_id = '42000000-2000-4000-8000-000000000002';
 insert into public.channels (
   id, workspace_id, youtube_connection_id, external_id, title, handle,
@@ -148,6 +156,29 @@ select throws_ok(
     values ('41000000-1000-4000-8000-000000000001', current_setting('test.youtube_conn_two')::uuid,
       'UC-cross-connection', 'Cross connection')$$,
   '23503', null, 'channel cannot reference another tenant connection'); -- 26
+set local role authenticated;
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '43000000-0000-4000-8000-000000000003', true);
+select throws_ok(
+  $$update public.channels set title = 'Viewer mutation'
+    where id = '41000000-3000-4000-8000-000000000001'$$,
+  '42501', 'permission denied for table channels',
+  'workspace viewer cannot directly update a channel');
+select throws_ok(
+  $$delete from public.channels where id = '41000000-3000-4000-8000-000000000003'$$,
+  '42501', 'permission denied for table channels',
+  'workspace viewer cannot directly delete a channel');
+select throws_ok(
+  $$select public.select_youtube_channel(
+    '41000000-1000-4000-8000-000000000001', '41000000-3000-4000-8000-000000000003')$$,
+  '42501', 'youtube_channel_selection_forbidden',
+  'workspace viewer cannot select a channel through the controlled RPC');
+select set_config('request.jwt.claim.sub', '41000000-0000-4000-8000-000000000001', true);
+select lives_ok(
+  $$select public.select_youtube_channel(
+    '41000000-1000-4000-8000-000000000001', '41000000-3000-4000-8000-000000000001')$$,
+  'workspace owner can select a channel through the controlled RPC');
+reset role;
 
 insert into public.youtube_videos (
   id, workspace_id, channel_id, external_id, title, published_at
@@ -173,6 +204,10 @@ select is((select subscriber_count from public.youtube_channel_snapshots limit 1
 select is((select view_count from public.youtube_video_snapshots limit 1), 20::bigint,
   'video metrics are preserved as immutable snapshots'); -- 29
 
+update app_private.research_operational_controls
+  set disabled = false, reason = null, updated_at = now()
+  where scope = 'provider' and provider = 'youtube_api';
+update app_private.youtube_api_quota_control set daily_quota_units = 2 where singleton;
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('test.youtube_sync', (public.begin_youtube_sync(
@@ -193,6 +228,8 @@ select is(current_setting('test.youtube_lease')::jsonb->>'encryptedCredentials',
   'service-only sync lease carries the encrypted credential envelope');
 select is(current_setting('test.youtube_lease')::jsonb->>'credentialVersion', 'v1',
   'service-only sync lease carries the credential version');
+select is((current_setting('test.youtube_lease')::jsonb->>'attemptCount')::integer, 1,
+  'service-only sync lease reports the current attempt count');
 select is(current_setting('test.youtube_lease')::jsonb->>'channelExternalId', 'UC-one-personal',
   'service-only sync lease identifies the selected channel');
 select is(current_setting('test.youtube_lease')::jsonb->>'uploadsPlaylistId', 'UU-one-personal',
@@ -205,9 +242,21 @@ select ok(not public.record_youtube_quota(
   current_setting('test.youtube_sync')::uuid,
   (current_setting('test.youtube_lease')::jsonb->>'leaseToken')::uuid,
   'channels.list', 1, 'quota-request-one'), 'replayed quota request is ignored'); -- 34
+select ok(public.record_youtube_quota(
+  current_setting('test.youtube_sync')::uuid,
+  (current_setting('test.youtube_lease')::jsonb->>'leaseToken')::uuid,
+  'playlistItems.list', 1, 'quota-request-two'),
+  'atomic daily quota permits the exact configured boundary');
+select throws_ok(format(
+  'select public.record_youtube_quota(%L,%L,%L,1,%L)',
+  current_setting('test.youtube_sync')::uuid,
+  (current_setting('test.youtube_lease')::jsonb->>'leaseToken')::uuid,
+  'videos.list', 'quota-request-three'),
+  'P0001', 'youtube_daily_quota_exceeded',
+  'atomic daily quota rejects the first unit beyond the boundary');
 reset role;
 select is((select quota_units from public.youtube_sync_runs where id = current_setting('test.youtube_sync')::uuid),
-  1, 'quota total is not double counted'); -- 35
+  2, 'quota total reaches the boundary without double counting replayed keys'); -- 35
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select lives_ok(
@@ -322,7 +371,7 @@ select set_config('request.jwt.claim.sub', '41000000-0000-4000-8000-000000000001
 select is((select count(*) from public.channels), 2::bigint, 'tenant one sees only its channels'); -- 47
 select is((select count(*) from public.youtube_videos), 2::bigint, 'tenant one sees only its videos'); -- 48
 select is((select count(*) from public.youtube_sync_runs), 1::bigint, 'tenant one sees only its syncs'); -- 49
-select is((select count(*) from public.youtube_quota_ledger), 1::bigint, 'tenant one sees only its quota entries'); -- 50
+select is((select count(*) from public.youtube_quota_ledger), 2::bigint, 'tenant one sees only its quota entries'); -- 50
 select ok(not has_table_privilege('authenticated', 'public.youtube_videos', 'INSERT'),
   'authenticated users cannot forge synchronized videos'); -- 51
 

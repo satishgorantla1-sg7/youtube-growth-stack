@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(11);
+select plan(12);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -49,6 +49,18 @@ select lives_ok(
   $$select public.select_youtube_channel('44000000-1000-4000-8000-000000000001',
     '44000000-3000-4000-8000-000000000001')$$,
   'owner can restore the intended selected channel'); -- 4
+select throws_ok(
+  $$select public.request_youtube_sync('44000000-1000-4000-8000-000000000001',
+    '44000000-3000-4000-8000-000000000001','disabled-default',2,25)$$,
+  'P0001','youtube_sync_disabled',
+  'YouTube API sync is disabled until an operator completes hosted smoke validation');
+reset role;
+update app_private.research_operational_controls
+  set disabled = false, reason = null, updated_at = now()
+  where scope = 'provider' and provider = 'youtube_api';
+set local role authenticated;
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '44000000-0000-4000-8000-000000000001', true);
 select throws_ok(
   $$select public.request_youtube_sync('44000000-1000-4000-8000-000000000001',
     '44000000-3000-4000-8000-000000000003','cross-sync',2,25)$$,

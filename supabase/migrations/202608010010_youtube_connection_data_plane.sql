@@ -160,6 +160,24 @@ create table public.youtube_quota_ledger (
     on delete cascade
 );
 
+create table app_private.youtube_api_quota_control (
+  singleton boolean primary key default true check (singleton),
+  daily_quota_units integer not null check (daily_quota_units between 1 and 1000000),
+  updated_at timestamptz not null default now()
+);
+insert into app_private.youtube_api_quota_control(singleton, daily_quota_units)
+values (true, 10000);
+revoke all on table app_private.youtube_api_quota_control from public, anon, authenticated;
+
+-- YouTube remains off until an operator has configured hosted credentials and
+-- completed the smoke checklist. Existing Apify and Firecrawl controls are
+-- intentionally unchanged.
+update app_private.research_operational_controls
+set disabled = true,
+    reason = 'Awaiting hosted YouTube credential and quota smoke validation',
+    updated_at = now()
+where scope = 'provider' and provider = 'youtube_api';
+
 create table app_private.youtube_sync_cursors (
   sync_run_id uuid primary key,
   workspace_id uuid not null,
@@ -195,6 +213,8 @@ create policy youtube_sync_runs_member_select on public.youtube_sync_runs
 create policy youtube_quota_ledger_member_select on public.youtube_quota_ledger
   for select to authenticated using (app_private.is_workspace_member(workspace_id));
 
+revoke insert, update, delete on public.channels from anon, authenticated;
+grant select on public.channels to authenticated;
 revoke insert, update, delete on public.youtube_videos, public.youtube_channel_snapshots,
   public.youtube_video_snapshots, public.youtube_sync_runs, public.youtube_quota_ledger
   from anon, authenticated;
@@ -293,6 +313,7 @@ begin
     'maxItems', sync.max_items, 'pagesFetched', sync.pages_fetched,
     'itemsFetched', sync.items_fetched, 'correlationId', sync.correlation_id,
     'leaseToken', sync.lease_token, 'leaseExpiresAt', sync.lease_expires_at,
+    'attemptCount', sync.attempt_count,
     'encryptedCredentials', connection.encrypted_credentials,
     'credentialVersion', connection.credential_version_number,
     'channelExternalId', selected_channel.external_id,
@@ -309,7 +330,10 @@ create or replace function public.record_youtube_quota(
   target_quota_units integer,
   request_idempotency_key text
 ) returns boolean language plpgsql security definer set search_path = '' as $$
-declare target_workspace_id uuid; inserted_count integer;
+declare target_workspace_id uuid;
+declare inserted_count integer;
+declare daily_limit integer;
+declare used_units bigint;
 begin
   if auth.role() <> 'service_role' then raise exception 'service_role_required' using errcode = '42501'; end if;
   select workspace_id into strict target_workspace_id from public.youtube_sync_runs
@@ -318,14 +342,32 @@ begin
   if target_quota_units < 1 then raise exception 'invalid_quota_units' using errcode = '22023'; end if;
   if app_private.research_control_disabled(target_workspace_id, 'youtube_api')
   then raise exception 'youtube_sync_disabled' using errcode = 'P0001'; end if;
+  if char_length(request_idempotency_key) < 8 or char_length(request_idempotency_key) > 200
+  then raise exception 'invalid_quota_idempotency_key' using errcode = '22023'; end if;
+
+  -- Google applies the daily ceiling to the API project, so serialize all
+  -- workspaces against one UTC-day lock rather than enforcing per tenant.
   perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended('youtube-quota:' || target_workspace_id::text, 0));
+    pg_catalog.hashtextextended('youtube-api-daily:' || (now() at time zone 'UTC')::date::text, 0));
+  if exists (
+    select 1 from public.youtube_quota_ledger ledger
+    where ledger.workspace_id = target_workspace_id
+      and ledger.request_idempotency_key = record_youtube_quota.request_idempotency_key
+  ) then return false; end if;
+  select daily_quota_units into strict daily_limit
+    from app_private.youtube_api_quota_control where singleton for update;
+  select coalesce(sum(quota_units), 0) into used_units
+    from public.youtube_quota_ledger
+    where quota_date = (now() at time zone 'UTC')::date;
+  if used_units + target_quota_units > daily_limit
+  then raise exception 'youtube_daily_quota_exceeded' using errcode = 'P0001'; end if;
+
+  perform app_private.consume_provider_rate_limit(target_workspace_id, 'youtube_api');
   insert into public.youtube_quota_ledger(workspace_id, sync_run_id, operation, quota_units, request_idempotency_key)
   values(target_workspace_id, target_sync_run_id, target_operation, target_quota_units, request_idempotency_key)
   on conflict on constraint youtube_quota_ledger_workspace_id_request_idempotency_key_key do nothing;
   get diagnostics inserted_count = row_count;
   if inserted_count = 1 then
-    perform app_private.consume_provider_rate_limit(target_workspace_id, 'youtube_api');
     update public.youtube_sync_runs set quota_units = quota_units + target_quota_units where id = target_sync_run_id;
   end if;
   return inserted_count = 1;
@@ -903,6 +945,9 @@ begin
     select 1 from jsonb_array_elements(target_channels) value
     where coalesce(char_length(value->>'externalId'), 0) < 1
       or coalesce(char_length(value->>'title'), 0) < 1
+      or coalesce(char_length(value->>'uploadsPlaylistId'), 0) < 1
+      or char_length(value->>'uploadsPlaylistId') > 200
+      or (value->>'uploadsPlaylistId') !~ '^[A-Za-z0-9_-]+$'
   ) then raise exception 'youtube_channels_invalid' using errcode = '22023'; end if;
   insert into app_private.youtube_connections(
     workspace_id, provider_subject_hash, encrypted_credentials, credential_version_number,
@@ -926,14 +971,15 @@ begin
     candidate_external_id := candidate->>'externalId';
     insert into public.channels(
       workspace_id, youtube_connection_id, provider, external_id, title, handle,
-      thumbnail_url, account_kind, is_selected, connection_state, last_synced_at
+      thumbnail_url, uploads_playlist_id, account_kind, is_selected, connection_state, last_synced_at
     ) values (
       target_workspace_id, connection_id, 'youtube', candidate_external_id, candidate->>'title',
       nullif(candidate->>'handle', ''), nullif(candidate->>'thumbnailUrl', ''),
-      'unknown', candidate_count = 1, 'active', now()
+      candidate->>'uploadsPlaylistId', 'unknown', candidate_count = 1, 'active', now()
     ) on conflict (workspace_id, provider, external_id) do update set
       youtube_connection_id = excluded.youtube_connection_id, title = excluded.title,
       handle = excluded.handle, thumbnail_url = excluded.thumbnail_url,
+      uploads_playlist_id = excluded.uploads_playlist_id,
       is_selected = excluded.is_selected, connection_state = 'active', last_synced_at = now();
   end loop;
   update app_private.youtube_oauth_states set completed_at = now() where id = oauth_state_id;
