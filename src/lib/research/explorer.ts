@@ -6,7 +6,7 @@ export const RESEARCH_PAGE_SIZE = 12;
 export const RESEARCH_EVIDENCE_LIMIT = 50;
 export const RESEARCH_PREVIEW_LIMIT = 280;
 
-const runStates = ["all", "queued", "running", "completed", "failed", "cancelled", "dead_letter", "configuration_required"] as const;
+const runStates = ["all", "awaiting_approval", "queued", "running", "cancelling", "completed", "failed", "cancelled", "dead_letter", "configuration_required"] as const;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 export type ResearchDisplayState = Exclude<(typeof runStates)[number], "all">;
@@ -40,8 +40,8 @@ export function displayResearchState(state: string, errorCode: string | null): R
   if (errorCode?.includes("configuration") || errorCode?.includes("not_configured")) return "configuration_required";
   if (state === "dead_letter" || errorCode?.includes("dead_letter") || errorCode === "lease_expired_at_max_attempts") return "dead_letter";
   if (state === "leased") return "running";
-  if (["queued", "running", "completed", "failed", "cancelled"].includes(state)) return state as ResearchDisplayState;
-  return state === "cancelling" ? "running" : "queued";
+  if (["awaiting_approval", "queued", "running", "cancelling", "completed", "failed", "cancelled"].includes(state)) return state as ResearchDisplayState;
+  return "failed";
 }
 
 export function boundedPreview(content: string | null): string | null {
@@ -73,12 +73,15 @@ export class SupabaseResearchExplorerSource implements ResearchExplorerSource {
     const offset = (filters.page - 1) * RESEARCH_PAGE_SIZE;
     let query = this.client.from("research_runs")
       .select("id,project_id,prompt,mode,state,estimated_credits,actual_credits,created_at,completed_at,error_code")
-      .eq("workspace_id", workspaceId).order("created_at", { ascending: false }).range(offset, offset + RESEARCH_PAGE_SIZE);
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + RESEARCH_PAGE_SIZE);
     if (filters.projectId) query = query.eq("project_id", filters.projectId);
     if (filters.from) query = query.gte("created_at", `${filters.from}T00:00:00.000Z`);
     if (filters.to) query = query.lte("created_at", `${filters.to}T23:59:59.999Z`);
-    if (filters.state === "running") query = query.in("state", ["running", "leased", "cancelling"]);
-    else if (["queued", "completed", "failed", "cancelled"].includes(filters.state)) query = query.eq("state", filters.state);
+    if (filters.state === "running") query = query.in("state", ["running", "leased"]);
+    else if (["awaiting_approval", "queued", "cancelling", "completed", "failed", "cancelled"].includes(filters.state)) query = query.eq("state", filters.state);
     if (filters.state === "dead_letter") query = query.or("state.eq.dead_letter,error_code.ilike.%dead_letter%,error_code.eq.lease_expired_at_max_attempts");
     if (filters.state === "configuration_required") query = query.or("error_code.ilike.%configuration%,error_code.ilike.%not_configured%");
 

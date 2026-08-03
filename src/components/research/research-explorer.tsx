@@ -4,9 +4,9 @@ import type { ResearchFilters, ResearchHistoryResult, ResearchRunDetail } from "
 import { safeEvidenceUrl } from "@/lib/research/explorer";
 import { ResearchLifecycleControls } from "./research-lifecycle-controls";
 
-const labels = { queued: "Queued", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled", dead_letter: "Needs intervention", configuration_required: "Configuration required" } as const;
+const labels = { awaiting_approval: "Awaiting approval", queued: "Queued", running: "Running", cancelling: "Cancelling", completed: "Completed", failed: "Failed", cancelled: "Cancelled", dead_letter: "Needs intervention", configuration_required: "Configuration required" } as const;
 const explanations = {
-  queued: "Waiting for an available research worker.", running: "Research providers are collecting bounded evidence.", completed: "Evidence collection finished.", failed: "This run stopped before completion.", cancelled: "This run was cancelled and no further work is scheduled.", dead_letter: "Automatic retries are exhausted. Retry controls are not available in this release.", configuration_required: "A required provider is not configured. Ask a workspace administrator to review settings.",
+  awaiting_approval: "Approval is required. No research is queued and no credits are reserved or consumed.", queued: "Waiting for an available research worker.", running: "Research providers are collecting bounded evidence.", cancelling: "Cancellation is recorded. In-flight work is stopping before another paid provider call.", completed: "Evidence collection finished.", failed: "This run stopped before completion.", cancelled: "This run was cancelled and no further work is scheduled.", dead_letter: "Automatic retries are exhausted. A workspace owner or admin can request a new approval before retrying.", configuration_required: "A required provider is not configured. Ask a workspace administrator to review settings.",
 } as const;
 
 function formatDate(value: string | null) { if (!value) return "Not yet"; return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(new Date(value)); }
@@ -40,7 +40,7 @@ export function ResearchDetail({ run, canManage = false }: { run: ResearchRunDet
   return <div className="research-detail">
     <Link className="research-back" href="/research"><ArrowLeft size={15}/>Back to research</Link>
     <section className="panel research-detail-summary"><div className="research-run-heading"><span className={`research-state state-${run.state}`}>{labels[run.state]}</span><span>{run.mode} research</span></div><h1>{run.prompt}</h1><p>{explanations[run.state]}</p>
-      <dl><div><dt>Project</dt><dd>{run.projectName ?? "Unassigned"}</dd></div><div><dt>Created</dt><dd>{formatDate(run.createdAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(run.completedAt)}</dd></div><div><dt>Credits</dt><dd>{run.actualCredits ?? run.estimatedCredits}</dd></div></dl>
+      <dl><div><dt>Project</dt><dd>{run.projectName ?? "Unassigned"}</dd></div><div><dt>Created</dt><dd>{formatDate(run.createdAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(run.completedAt)}</dd></div><div><dt>{run.actualCredits === null ? "Estimated credits" : "Actual credits"}</dt><dd>{run.actualCredits ?? run.estimatedCredits}</dd></div></dl>
       {run.errorCode ? <div className="research-error"><AlertTriangle size={16}/><span>Run code: {run.errorCode}</span></div> : null}
       <ResearchLifecycleControls runId={run.id} state={run.state} canManage={canManage} />
     </section>

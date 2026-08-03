@@ -12,7 +12,7 @@
 .state-failed, .state-dead_letter { color: var(--destructive); background: color-mix(in oklch, var(--destructive) 9%, var(--card)); }
 .state-configuration_required { color: oklch(.47 .12 65); background: oklch(.94 .04 75); }
 .state-cancelled { color: var(--muted-foreground); background: var(--muted); }
-.state-running, .state-queued { color: var(--accent-foreground); background: var(--accent); }
+.state-awaiting_approval, .state-running, .state-queued, .state-cancelling { color: var(--accent-foreground); background: var(--accent); }
 .research-run-card h2, .research-detail-summary h1 { margin: 14px 0 7px; font-family: Georgia, serif; font-size: 21px; font-weight: 500; line-height: 1.2; }
 .research-run-card > p, .research-detail-summary > p, .research-evidence-heading p, .research-empty p { margin: 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.55; }
 .research-run-card dl, .research-detail-summary dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0 0; }

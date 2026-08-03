@@ -32,4 +32,13 @@ describe("ResearchDetail", () => {
     expect(screen.getByRole("button", { name: "Request retry approval" })).toBeDisabled();
     expect(screen.getByText(/only a workspace owner or admin/i)).toBeInTheDocument();
   });
+  it("shows approval, cancellation, and credit state truthfully", () => {
+    const detail = { ...base, actualCredits: null, startedAt: null, updatedAt: base.createdAt, evidenceLimited: false, evidence: [] };
+    const { rerender } = render(<ResearchDetail run={{ ...detail, state: "awaiting_approval" }} canManage />);
+    expect(screen.getByText(/no research is queued and no credits are reserved or consumed/i)).toBeInTheDocument();
+    expect(screen.getByText("Estimated credits")).toBeInTheDocument();
+    rerender(<ResearchDetail run={{ ...detail, state: "cancelling" }} canManage />);
+    expect(screen.getByText(/in-flight work is stopping/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel run" })).not.toBeInTheDocument();
+  });
 });

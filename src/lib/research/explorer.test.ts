@@ -8,6 +8,9 @@ describe("research explorer contracts", () => {
   });
   it("maps operational states to truthful user states", () => {
     expect(displayResearchState("leased", null)).toBe("running");
+    expect(displayResearchState("awaiting_approval", null)).toBe("awaiting_approval");
+    expect(displayResearchState("cancelling", null)).toBe("cancelling");
+    expect(displayResearchState("unexpected_guarded_state", null)).toBe("failed");
     expect(displayResearchState("failed", "lease_expired_at_max_attempts")).toBe("dead_letter");
     expect(displayResearchState("failed", "firecrawl_not_configured")).toBe("configuration_required");
   });
