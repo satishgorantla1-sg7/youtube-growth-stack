@@ -19,6 +19,9 @@ insert into public.approvals(id,workspace_id,entity_type,entity_id,state,risk_su
 insert into app_private.youtube_approval_claims(approval_id,workspace_id,purpose) values
 ('47000000-5000-4000-8000-000000000001','47000000-1000-4000-8000-000000000001','connect');
 
+update app_private.research_operational_controls
+set disabled = false, reason = null where scope = 'provider' and provider = 'youtube_api';
+
 set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
 select set_config('request.jwt.claim.sub','47000000-0000-4000-8000-000000000001',true);
