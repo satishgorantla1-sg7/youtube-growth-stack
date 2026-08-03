@@ -1,6 +1,6 @@
 import type { Database } from "@/lib/supabase/database.types";
 
-export type ChannelRow = Pick<Database["public"]["Tables"]["channels"]["Row"], "id" | "title" | "handle" | "connection_state" | "last_synced_at"> & { is_selected: boolean };
+export type ChannelRow = Pick<Database["public"]["Tables"]["channels"]["Row"], "id" | "title" | "handle" | "connection_state" | "last_synced_at" | "is_selected">;
 export type ProjectRow = Pick<Database["public"]["Tables"]["projects"]["Row"], "id" | "name" | "niche" | "status" | "created_at">;
 export type ResearchRunRow = Pick<Database["public"]["Tables"]["research_runs"]["Row"], "id" | "prompt" | "mode" | "state" | "estimated_credits" | "actual_credits" | "created_at" | "completed_at" | "error_code">;
 export type ResearchSourceRow = Pick<Database["public"]["Tables"]["research_sources"]["Row"], "id" | "research_run_id">;
