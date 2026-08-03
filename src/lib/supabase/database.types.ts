@@ -1281,6 +1281,7 @@ export type Database = {
       youtube_sync_runs: {
         Row: {
           attempt_count: number
+          available_at: string
           channel_id: string | null
           completed_at: string | null
           correlation_id: string
@@ -1303,6 +1304,7 @@ export type Database = {
         }
         Insert: {
           attempt_count?: number
+          available_at?: string
           channel_id?: string | null
           completed_at?: string | null
           correlation_id?: string
@@ -1325,6 +1327,7 @@ export type Database = {
         }
         Update: {
           attempt_count?: number
+          available_at?: string
           channel_id?: string | null
           completed_at?: string | null
           correlation_id?: string
@@ -1625,6 +1628,14 @@ export type Database = {
         }
         Returns: string
       }
+      fail_youtube_sync_for_reconnect: {
+        Args: {
+          target_lease_token: string
+          target_sync_run_id: string
+          target_workspace_id: string
+        }
+        Returns: Json
+      }
       finish_provider_invocation: {
         Args: {
           safe_metadata?: Json
@@ -1719,6 +1730,14 @@ export type Database = {
           target_idempotency_key: string
           target_max_items?: number
           target_max_pages?: number
+          target_workspace_id: string
+        }
+        Returns: Json
+      }
+      requeue_youtube_sync_after_refresh_lock: {
+        Args: {
+          target_lease_token: string
+          target_sync_run_id: string
           target_workspace_id: string
         }
         Returns: Json
