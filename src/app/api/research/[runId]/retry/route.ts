@@ -24,8 +24,10 @@ export async function POST(request: Request, context: { params: Promise<{ runId:
     request_idempotency_key: body.data.idempotencyKey,
   });
   if (error) {
-    const status = error.message === "research_retry_forbidden" ? 403 : 409;
-    return NextResponse.json({ error: error.message }, { status });
+    const known = ["research_retry_forbidden", "research_not_retryable", "research_retry_idempotency_conflict"].includes(error.message);
+    const code = known ? error.message : "research_retry_unavailable";
+    const status = code === "research_retry_forbidden" ? 403 : code === "research_retry_unavailable" ? 500 : 409;
+    return NextResponse.json({ error: code }, { status });
   }
   const result = data as { created?: boolean };
   return NextResponse.json(data, { status: result.created === false ? 200 : 201 });

@@ -27,10 +27,9 @@ describe("ResearchDetail", () => {
     expect(screen.getByText("A concise, server-bounded preview.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open source/i })).toHaveAttribute("rel", "noreferrer");
   });
-  it("keeps absent lifecycle controls explicitly unavailable", () => {
+  it("keeps lifecycle mutations unavailable to non-managers", () => {
     render(<ResearchDetail run={{ ...base, state: "dead_letter", errorCode: "lease_expired_at_max_attempts", startedAt: null, updatedAt: base.createdAt, evidenceLimited: false, evidence: [] }} />);
-    expect(screen.getByRole("button", { name: "Retry run" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel run" })).toBeDisabled();
-    expect(screen.getByText(/audited server contracts/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Request retry approval" })).toBeDisabled();
+    expect(screen.getByText(/only a workspace owner or admin/i)).toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@ import { AlertTriangle, ArrowLeft, Clock3, ExternalLink, FileSearch, FolderKanba
 import Link from "next/link";
 import type { ResearchFilters, ResearchHistoryResult, ResearchRunDetail } from "@/lib/research/explorer";
 import { safeEvidenceUrl } from "@/lib/research/explorer";
+import { ResearchLifecycleControls } from "./research-lifecycle-controls";
 
 const labels = { queued: "Queued", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled", dead_letter: "Needs intervention", configuration_required: "Configuration required" } as const;
 const explanations = {
@@ -35,13 +36,13 @@ export function ResearchHistory({ result, filters }: { result: ResearchHistoryRe
   </>;
 }
 
-export function ResearchDetail({ run }: { run: ResearchRunDetail }) {
+export function ResearchDetail({ run, canManage = false }: { run: ResearchRunDetail; canManage?: boolean }) {
   return <div className="research-detail">
     <Link className="research-back" href="/research"><ArrowLeft size={15}/>Back to research</Link>
     <section className="panel research-detail-summary"><div className="research-run-heading"><span className={`research-state state-${run.state}`}>{labels[run.state]}</span><span>{run.mode} research</span></div><h1>{run.prompt}</h1><p>{explanations[run.state]}</p>
       <dl><div><dt>Project</dt><dd>{run.projectName ?? "Unassigned"}</dd></div><div><dt>Created</dt><dd>{formatDate(run.createdAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(run.completedAt)}</dd></div><div><dt>Credits</dt><dd>{run.actualCredits ?? run.estimatedCredits}</dd></div></dl>
       {run.errorCode ? <div className="research-error"><AlertTriangle size={16}/><span>Run code: {run.errorCode}</span></div> : null}
-      {(run.state === "failed" || run.state === "dead_letter" || run.state === "running" || run.state === "queued") ? <div className="research-disabled-actions"><button type="button" disabled>Retry run</button><button type="button" disabled>Cancel run</button><span>Lifecycle controls will appear after their audited server contracts ship.</span></div> : null}
+      <ResearchLifecycleControls runId={run.id} state={run.state} canManage={canManage} />
     </section>
     <section className="research-evidence-heading"><div><span className="eyebrow">Evidence explorer</span><h2>{run.evidence.length} saved source{run.evidence.length === 1 ? "" : "s"}</h2></div><p>Previews are bounded. Open the original source to inspect its full context.</p></section>
     {run.evidenceLimited ? <p className="research-limit-note">Showing the first 50 sources for a bounded, responsive view.</p> : null}

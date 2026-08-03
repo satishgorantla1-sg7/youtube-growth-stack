@@ -20,4 +20,11 @@ describe("POST /api/research/[runId]/cancel", () => {
     expect(response.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledWith("cancel_research_run", expect.objectContaining({ cancellation_note: "Stop" }));
   });
+  it("does not expose unexpected database errors", async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: { id: "user" } }, error: null });
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: "internal relation detail" } });
+    const response = await POST(new Request("http://test/cancel", { method: "POST", body: "{}" }), { params: Promise.resolve({ runId: "550e8400-e29b-41d4-a716-446655440000" }) });
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "research_cancellation_unavailable" });
+  });
 });

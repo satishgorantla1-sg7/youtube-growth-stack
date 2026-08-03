@@ -21,4 +21,11 @@ describe("POST /api/research/[runId]/retry", () => {
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({ state: "awaiting_approval", created: true });
   });
+  it("does not expose unexpected database errors", async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: { id: "user" } }, error: null });
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: "internal relation detail" } });
+    const response = await POST(new Request("http://test/retry", { method: "POST", body: JSON.stringify({ idempotencyKey: "retry-key-one" }) }), { params: Promise.resolve({ runId: "550e8400-e29b-41d4-a716-446655440000" }) });
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "research_retry_unavailable" });
+  });
 });
