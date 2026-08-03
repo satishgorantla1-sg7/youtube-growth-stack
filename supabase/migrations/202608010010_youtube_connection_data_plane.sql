@@ -124,6 +124,7 @@ create table public.youtube_sync_runs (
   items_fetched integer not null default 0 check (items_fetched between 0 and 500),
   quota_units integer not null default 0 check (quota_units >= 0),
   attempt_count integer not null default 0 check (attempt_count between 0 and 5),
+  available_at timestamptz not null default now(),
   lease_token uuid,
   lease_expires_at timestamptz,
   last_error_code text,
@@ -229,7 +230,7 @@ create index youtube_channel_snapshots_channel_captured_idx
 create index youtube_video_snapshots_video_captured_idx
   on public.youtube_video_snapshots(workspace_id, video_id, captured_at desc);
 create index youtube_sync_runs_queue_idx
-  on public.youtube_sync_runs(state, created_at) where state in ('queued','running');
+  on public.youtube_sync_runs(state, available_at, created_at) where state in ('queued','running');
 create index youtube_sync_runs_workspace_created_idx
   on public.youtube_sync_runs(workspace_id, created_at desc);
 create index youtube_quota_workspace_date_idx
@@ -285,6 +286,7 @@ begin
   then raise exception 'invalid_sync_lease' using errcode = '22023'; end if;
   select * into sync from public.youtube_sync_runs
   where (state = 'queued' or (state = 'running' and lease_expires_at <= now()))
+    and available_at <= now()
     and attempt_count < 5
   order by created_at for update skip locked limit 1;
   if not found then return null; end if;
@@ -394,15 +396,127 @@ begin
   if not found then raise exception 'invalid_or_expired_sync_lease' using errcode = 'P0001'; end if;
 end $$;
 
+create or replace function public.fail_youtube_sync_for_reconnect(
+  target_workspace_id uuid,
+  target_sync_run_id uuid,
+  target_lease_token uuid
+) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare sync public.youtube_sync_runs%rowtype;
+begin
+  if auth.role() <> 'service_role' then
+    raise exception 'service_role_required' using errcode = '42501';
+  end if;
+
+  select * into sync from public.youtube_sync_runs
+    where workspace_id = target_workspace_id
+      and id = target_sync_run_id
+      and state = 'running'
+      and lease_token = target_lease_token
+      and lease_expires_at > now()
+    for update;
+  if not found then
+    raise exception 'invalid_or_expired_sync_lease' using errcode = 'P0001';
+  end if;
+
+  update public.youtube_sync_runs set
+    state = 'failed',
+    last_error_code = 'youtube_reconnect_required',
+    completed_at = now(),
+    lease_token = null,
+    lease_expires_at = null
+  where workspace_id = sync.workspace_id and id = sync.id;
+
+  update app_private.youtube_connections set
+    state = 'reconnect_required',
+    refresh_lock_token = null,
+    refresh_lock_expires_at = null,
+    updated_at = now()
+  where workspace_id = sync.workspace_id and id = sync.youtube_connection_id;
+  if not found then
+    raise exception 'youtube_connection_unavailable' using errcode = 'P0001';
+  end if;
+
+  update public.channels set connection_state = 'expired'
+    where workspace_id = sync.workspace_id
+      and youtube_connection_id = sync.youtube_connection_id
+      and provider = 'youtube';
+
+  insert into public.audit_events(workspace_id, actor_id, action, entity_type, entity_id, metadata)
+  values(sync.workspace_id, null, 'youtube.sync.reconnect_required', 'youtube_sync_run', sync.id::text,
+    jsonb_build_object('error_code', 'youtube_reconnect_required',
+      'connection_id', sync.youtube_connection_id, 'correlation_id', sync.correlation_id));
+
+  return jsonb_build_object('id', sync.id, 'workspaceId', sync.workspace_id,
+    'state', 'failed', 'errorCode', 'youtube_reconnect_required');
+end $$;
+
+create or replace function public.requeue_youtube_sync_after_refresh_lock(
+  target_workspace_id uuid,
+  target_sync_run_id uuid,
+  target_lease_token uuid
+) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare sync public.youtube_sync_runs%rowtype;
+declare retry_seconds integer;
+declare retry_at timestamptz;
+begin
+  if auth.role() <> 'service_role' then
+    raise exception 'service_role_required' using errcode = '42501';
+  end if;
+
+  select * into sync from public.youtube_sync_runs
+    where workspace_id = target_workspace_id
+      and id = target_sync_run_id
+      and state = 'running'
+      and lease_token = target_lease_token
+      and lease_expires_at > now()
+    for update;
+  if not found then
+    raise exception 'invalid_or_expired_sync_lease' using errcode = 'P0001';
+  end if;
+
+  if sync.attempt_count >= 5 then
+    update public.youtube_sync_runs set
+      state = 'failed',
+      last_error_code = 'youtube_sync_retry_exhausted',
+      completed_at = now(),
+      lease_token = null,
+      lease_expires_at = null
+    where workspace_id = sync.workspace_id and id = sync.id;
+    return jsonb_build_object('id', sync.id, 'workspaceId', sync.workspace_id,
+      'state', 'failed', 'errorCode', 'youtube_sync_retry_exhausted',
+      'attemptCount', sync.attempt_count);
+  end if;
+
+  retry_seconds := least(300, 5 * (2 ^ greatest(sync.attempt_count - 1, 0))::integer);
+  retry_at := now() + make_interval(secs => retry_seconds);
+  update public.youtube_sync_runs set
+    state = 'queued',
+    available_at = retry_at,
+    last_error_code = 'youtube_token_refresh_locked',
+    completed_at = null,
+    lease_token = null,
+    lease_expires_at = null
+  where workspace_id = sync.workspace_id and id = sync.id;
+
+  return jsonb_build_object('id', sync.id, 'workspaceId', sync.workspace_id,
+    'state', 'queued', 'errorCode', 'youtube_token_refresh_locked',
+    'attemptCount', sync.attempt_count, 'retryAfterSeconds', retry_seconds,
+    'availableAt', retry_at);
+end $$;
+
 revoke all on function public.begin_youtube_sync(uuid,uuid,uuid,text,integer,integer) from public, anon, authenticated;
 revoke all on function public.lease_youtube_sync(text,integer) from public, anon, authenticated;
 revoke all on function public.record_youtube_quota(uuid,uuid,text,integer,text) from public, anon, authenticated;
 revoke all on function public.finish_youtube_sync(uuid,uuid,text,integer,integer,text) from public, anon, authenticated;
+revoke all on function public.fail_youtube_sync_for_reconnect(uuid,uuid,uuid) from public, anon, authenticated;
+revoke all on function public.requeue_youtube_sync_after_refresh_lock(uuid,uuid,uuid) from public, anon, authenticated;
 
 grant execute on function public.begin_youtube_sync(uuid,uuid,uuid,text,integer,integer) to service_role;
 grant execute on function public.lease_youtube_sync(text,integer) to service_role;
 grant execute on function public.record_youtube_quota(uuid,uuid,text,integer,text) to service_role;
 grant execute on function public.finish_youtube_sync(uuid,uuid,text,integer,integer,text) to service_role;
+grant execute on function public.fail_youtube_sync_for_reconnect(uuid,uuid,uuid) to service_role;
+grant execute on function public.requeue_youtube_sync_after_refresh_lock(uuid,uuid,uuid) to service_role;
 
 create table app_private.youtube_approval_claims (
   approval_id uuid primary key references public.approvals(id) on delete restrict,
