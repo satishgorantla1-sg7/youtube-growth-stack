@@ -41,6 +41,7 @@ export function YouTubeConnectionPanel({
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [disconnectReview, setDisconnectReview] = useState(false);
   const [disconnectConfirmed, setDisconnectConfirmed] = useState(false);
+  const [revocationApprovalId, setRevocationApprovalId] = useState<string | null>(null);
   const [title, body] = copy[status];
   const reconnecting = status === "revoked";
 
@@ -108,15 +109,23 @@ export function YouTubeConnectionPanel({
     if (!workspaceId || !disconnectConfirmed || busy) return;
     setBusy(true); setMessage(null);
     try {
-      const pending = await jsonPost("/api/integrations/youtube/revocation-approval", { workspaceId });
-      if (typeof pending.approvalId !== "string") throw new Error("approval_creation_failed");
-      const decision = await jsonPost(`/api/integrations/youtube/approval/${encodeURIComponent(pending.approvalId)}`, { decision: "approved", note: "Confirmed revocation of Google access. Imported data is retained." });
-      if (decision.state !== "approved") throw new Error("approval_decision_failed");
-      await jsonPost("/api/integrations/youtube/disconnect", { workspaceId, approvalId: pending.approvalId });
+      let approvalId = revocationApprovalId;
+      if (!approvalId) {
+        const approval = await jsonPost("/api/integrations/youtube/revocation-approval", { workspaceId });
+        if (typeof approval.approvalId !== "string") throw new Error("approval_creation_failed");
+        approvalId = approval.approvalId;
+        if (approval.state === "pending") {
+          const decision = await jsonPost(`/api/integrations/youtube/approval/${encodeURIComponent(approvalId)}`, { decision: "approved", note: "Confirmed revocation of Google access. Imported data is retained." });
+          if (decision.state !== "approved") throw new Error("approval_decision_failed");
+        } else if (approval.state !== "approved") throw new Error("approval_creation_failed");
+        setRevocationApprovalId(approvalId);
+      }
+      await jsonPost("/api/integrations/youtube/disconnect", { workspaceId, approvalId });
       setMessage("Google access was revoked. Imported data was retained.");
+      setRevocationApprovalId(null);
       setDisconnectReview(false); setDisconnectConfirmed(false);
       refresh();
-    } catch { setMessage("Google access could not be revoked. The connection was not reported as disconnected."); }
+    } catch (error) { setMessage(error instanceof Error && error.message === "youtube_revocation_in_progress" ? "Revocation is still in progress. Wait for the current attempt to finish, then retry with the same approval." : "Google access could not be revoked. The approved revocation is retained for a safe retry; the connection was not reported as disconnected."); }
     finally { setBusy(false); }
   }
 
@@ -129,7 +138,7 @@ export function YouTubeConnectionPanel({
       </div>
     </section>
     {status === "select_channel" ? <section className="panel youtube-channel-picker" aria-labelledby="owned-channel-title"><div className="panel-heading"><div><p className="youtube-eyebrow">Google account</p><h2 id="owned-channel-title">Owned and Brand channels</h2></div><span className="status-pill">{candidates.length} available</span></div>{candidates.length ? <fieldset disabled={busy}><legend>Select one channel</legend>{candidates.map((candidate) => <label key={candidate.id}><input type="radio" name="youtube-channel" value={candidate.id} checked={selectedCandidateId === candidate.id} onChange={() => setSelectedCandidateId(candidate.id)} /><span><strong>{candidate.title}</strong><small>{candidate.handle ?? "No public handle"}</small></span></label>)}<button className="youtube-primary-action" type="button" onClick={selectCandidate} disabled={!selectedCandidateId || busy}>{busy ? "Selecting…" : "Use selected channel"}</button></fieldset> : <p className="youtube-unavailable"><AlertTriangle size={15} aria-hidden="true" />No owned channels were returned. Try a different Google account.</p>}</section> : null}
-    {channels.length ? <section className="youtube-channel-list" aria-label="Connected YouTube channels">{channels.map((channel) => <article className="panel youtube-channel-card" key={channel.id}><div className="youtube-channel-heading"><span className="youtube-channel-mark"><Youtube aria-hidden="true" /></span><div><h2>{channel.title}</h2><p>{channel.handle ?? "No public handle"}</p></div><span className={`status-pill youtube-channel-state-${channel.status}`}>{channel.status.replaceAll("_", " ")}</span></div><p>{formatDate(channel.lastSyncedAt)}</p><div className="youtube-actions youtube-lifecycle-actions" aria-label={`Actions for ${channel.title}`}><button type="button" onClick={() => syncChannel(channel.id)} disabled={busy || channel.status !== "connected"}><RefreshCw size={15} aria-hidden="true" />Sync now</button><button type="button" onClick={() => setDisconnectReview(true)} disabled={busy || channel.status === "revoked"}><Unplug size={15} aria-hidden="true" />Disconnect Google</button></div></article>)}</section> : null}
+    {channels.length ? <section className="youtube-channel-list" aria-label="Connected YouTube channels">{channels.map((channel) => <article className="panel youtube-channel-card" key={channel.id}><div className="youtube-channel-heading"><span className="youtube-channel-mark"><Youtube aria-hidden="true" /></span><div><h2>{channel.title}</h2><p>{channel.handle ?? "No public handle"}</p></div><span className={`status-pill youtube-channel-state-${channel.status}`}>{channel.status.replaceAll("_", " ")}</span></div><p>{formatDate(channel.lastSyncedAt)}</p><div className="youtube-actions youtube-lifecycle-actions" aria-label={`Actions for ${channel.title}`}><button type="button" onClick={() => syncChannel(channel.id)} disabled={busy || status !== "connected" || channel.status !== "connected"}><RefreshCw size={15} aria-hidden="true" />Sync now</button><button type="button" onClick={() => setDisconnectReview(true)} disabled={busy || channel.status === "revoked"}><Unplug size={15} aria-hidden="true" />Disconnect Google</button></div></article>)}</section> : null}
     {disconnectReview ? <section className="panel youtube-scope-review" aria-labelledby="youtube-disconnect-title"><h2 id="youtube-disconnect-title">Disconnect Google access?</h2><p>This revokes the encrypted Google credential. Imported channel, video, and snapshot data is retained.</p><label><input type="checkbox" checked={disconnectConfirmed} onChange={(event) => setDisconnectConfirmed(event.target.checked)} /><span>I approve this separate revocation action and understand imported data will remain.</span></label><div className="youtube-actions"><button type="button" onClick={disconnect} disabled={!disconnectConfirmed || busy}>{busy ? "Revoking access…" : "Approve and disconnect"}</button><button type="button" onClick={() => { setDisconnectReview(false); setDisconnectConfirmed(false); }} disabled={busy}>Cancel</button></div></section> : null}
     <section className="panel youtube-danger-zone" aria-labelledby="youtube-data-title"><div><p className="youtube-eyebrow">Imported data</p><h2 id="youtube-data-title">Delete imported YouTube data</h2><p>Disconnecting Google access and deleting imported data are separate actions. Deletion requires a new explicit approval and does not delete anything from YouTube.</p></div><button type="button" disabled>Deletion approval unavailable</button></section>
   </div>;

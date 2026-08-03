@@ -25,6 +25,8 @@ No raw access token, refresh token, OAuth code, state value, or credential envel
 
 `youtube_sync_runs` is idempotent per workspace and caps each run at 10 pages, 500 items, and 5 attempts. Authenticated owner/admin/editor members can request a sync only for the selected active channel. A service worker leases one run at a time, persists each normalized page and its versioned encrypted pagination cursor atomically, resumes safely after lease expiry, reserves quota with a request idempotency key before each outbound attempt, and completes with a safe error code.
 
+The `youtube_api` provider is disabled by default. Authorization preflight, callback discovery, sync leasing, and token refresh all fail closed while disabled. Owned-channel discovery reserves its `channels.list` unit before the request in the same serialized, UTC-day 10,000-unit project budget as sync traffic; discovery entries use a one-time OAuth-state-derived idempotency key and do not invent a sync run.
+
 | Control | Default | Hard maximum |
 | --- | ---: | ---: |
 | Pages | 5 | 10 |

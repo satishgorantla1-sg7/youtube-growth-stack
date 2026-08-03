@@ -42,6 +42,9 @@ insert into app_private.youtube_approval_claims(approval_id, workspace_id, purpo
   ('41000000-5000-4000-8000-000000000001', '41000000-1000-4000-8000-000000000001', 'connect'),
   ('42000000-5000-4000-8000-000000000002', '42000000-2000-4000-8000-000000000002', 'connect');
 
+update app_private.research_operational_controls
+set disabled = false, reason = null where scope = 'provider' and provider = 'youtube_api';
+
 select ok(not has_schema_privilege('authenticated', 'app_private', 'USAGE'),
   'authenticated users cannot access private connection records'); -- 8
 select ok(not has_table_privilege('authenticated', 'app_private.youtube_connections', 'SELECT'),

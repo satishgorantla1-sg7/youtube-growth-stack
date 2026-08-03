@@ -10,6 +10,7 @@ export async function POST(request: Request) {
     const client = await authorizeYoutubeLifecycleRequest();
     const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "invalid_youtube_revocation_approval" }, { status: 400 });
-    return NextResponse.json(await createYoutubeRevocationApproval(client, parsed.data.workspaceId), { status: 201, headers: { "Cache-Control": "no-store" } });
+    const approval = await createYoutubeRevocationApproval(client, parsed.data.workspaceId);
+    return NextResponse.json(approval, { status: approval.reused ? 200 : 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return youtubeLifecycleErrorResponse(error); }
 }

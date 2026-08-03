@@ -12,6 +12,7 @@ function source(overrides: Partial<DashboardDataSource> = {}): DashboardDataSour
     packages: () => ok([]),
     ideasById: () => ok([]),
     approvals: () => ok([]),
+    latestYoutubeSync: () => ok(null),
     channels: () => ok([]),
     projects: () => ok([]),
     usage: () => ok([]),
