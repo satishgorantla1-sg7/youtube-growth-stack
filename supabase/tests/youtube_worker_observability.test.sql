@@ -34,14 +34,17 @@ select is(
 );
 
 set local role service_role;
+select set_config('request.jwt.claim.role', 'service_role', true);
 select is(public.get_youtube_worker_status()->>'status', 'healthy', 'service health sees a recent heartbeat');
 reset role;
 
 update app_private.worker_heartbeats set last_seen_at = now() - interval '31 seconds';
 set local role service_role;
+select set_config('request.jwt.claim.role', 'service_role', true);
 select is(public.get_youtube_worker_status()->>'status', 'stale', 'expired heartbeat is reported as stale');
 select is(public.get_youtube_worker_status() ? 'workerId', false, 'coarse status never exposes a worker identifier');
 reset role;
+select set_config('request.jwt.claim.role', '', true);
 
 select throws_ok(
   $$ select public.record_worker_heartbeat('youtube_sync', '10000000-0000-4000-8000-000000000001', 'token=secret') $$,
