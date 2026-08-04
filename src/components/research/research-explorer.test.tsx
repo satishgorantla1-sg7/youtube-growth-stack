@@ -14,6 +14,12 @@ describe("ResearchHistory", () => {
     expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/research?page=2");
   });
+  it("marks long prompts and channel URLs for safe wrapping", () => {
+    const prompt = "Okay, can I search this YouTube channel for ideas? https://www.youtube.com/channel/UCwg1ilsns02BK1nG8Vo5Cwg";
+    render(<ResearchHistory filters={filters} result={{ items: [{ ...base, prompt }], projects: [], page: 1, hasPrevious: false, hasNext: false }} />);
+
+    expect(screen.getByRole("heading", { name: prompt })).toHaveClass("research-run-title");
+  });
   it("shows a truthful filtered empty state", () => {
     render(<ResearchHistory filters={filters} result={{ items: [], projects: [], page: 1, hasPrevious: false, hasNext: false }} />);
     expect(screen.getByRole("heading", { name: "No matching research" })).toBeInTheDocument();
