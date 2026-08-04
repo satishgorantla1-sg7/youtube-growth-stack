@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { GET } from "./route";
+import { buildHealthResponse, GET } from "./route";
 
 const keys = [
   "NEXT_PUBLIC_DEMO_MODE",
@@ -30,7 +30,7 @@ describe("GET /api/health", () => {
     delete process.env.APIFY_API_TOKEN;
     delete process.env.FIRECRAWL_API_KEY;
 
-    const response = GET();
+    const response = await GET();
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -58,12 +58,16 @@ describe("GET /api/health", () => {
     process.env.FIRECRAWL_API_KEY = "configured";
     delete process.env.PAID_RESEARCH_PROVIDERS_ENABLED;
 
-    const body = await GET().json();
+    const body = await (await buildHealthResponse(async () => ({ topology: "external_long_running_worker", status: "stale" }))).json();
     expect(body.providers).toMatchObject({
       apify: "configured",
       firecrawl: "configured",
       paidResearchEnabled: false,
     });
     expect(body.research.activation).toBe("disabled_by_operator");
+    expect(body.workers.youtubeSync).toEqual({
+      topology: "external_long_running_worker",
+      status: "stale",
+    });
   });
 });

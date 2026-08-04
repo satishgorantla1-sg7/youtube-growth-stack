@@ -13,6 +13,7 @@ import {
 } from "./youtube-sync-repository";
 import { YouTubeTokenLifecycle } from "./youtube-token-lifecycle";
 import { readTokenCipher, type VersionedTokenCipher } from "./youtube-token-crypto";
+import { SupabaseYouTubeWorkerHeartbeatRepository } from "./youtube-worker-health";
 
 type SyncResult = "idle" | "completed" | "failed" | "requeued" | "lease_lost";
 type SyncProvider = Pick<YouTubeReadOnlyProvider, "listManagedChannels" | "listUploadIds" | "listVideos">;
@@ -198,10 +199,25 @@ export function createProductionYouTubeSyncDependencies() {
       new GoogleYouTubeOAuthProvider(oauthConfig),
       cipher,
     ),
+    heartbeat: new SupabaseYouTubeWorkerHeartbeatRepository(client as never),
   };
 }
 
 export async function runProductionYouTubeSyncOnce(workerId: string): Promise<SyncResult> {
   const dependencies = createProductionYouTubeSyncDependencies();
-  return runYouTubeSyncOnce(dependencies.repository, dependencies.cipher, workerId, dependencies.tokenLifecycle);
+  await dependencies.heartbeat.record(workerId, "working");
+  const heartbeat = setInterval(() => {
+    void dependencies.heartbeat.record(workerId, "working").catch(() => undefined);
+  }, 10_000);
+  heartbeat.unref();
+  try {
+    const result = await runYouTubeSyncOnce(dependencies.repository, dependencies.cipher, workerId, dependencies.tokenLifecycle);
+    await dependencies.heartbeat.record(workerId, result === "completed" ? "completed" : result === "failed" ? "failed" : "idle");
+    return result;
+  } catch (error) {
+    await dependencies.heartbeat.record(workerId, "failed").catch(() => undefined);
+    throw error;
+  } finally {
+    clearInterval(heartbeat);
+  }
 }

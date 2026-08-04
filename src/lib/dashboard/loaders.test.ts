@@ -13,6 +13,7 @@ function source(overrides: Partial<DashboardDataSource> = {}): DashboardDataSour
     ideasById: () => ok([]),
     approvals: () => ok([]),
     latestYoutubeSync: () => ok(null),
+    youtubeWorkerStatus: () => ok({ status: "not_seen", lastSeenAt: null }),
     channels: () => ok([]),
     projects: () => ok([]),
     usage: () => ok([]),

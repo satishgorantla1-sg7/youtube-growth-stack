@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
-import type { ApprovalRow, ChannelRow, DashboardDataSource, DataResult, IdeaRow, PackageRow, ProjectRow, ResearchRunRow, ResearchSourceRow, UsageRow, WorkspaceRow, YouTubeSyncStatusRow } from "./contracts";
+import type { ApprovalRow, ChannelRow, DashboardDataSource, DataResult, IdeaRow, PackageRow, ProjectRow, ResearchRunRow, ResearchSourceRow, UsageRow, WorkspaceRow, YouTubeSyncStatusRow, YouTubeWorkerStatusRow } from "./contracts";
+import { youtubeWorkerStatusSchema } from "@/lib/providers/youtube-worker-health";
 
 function result<T>(data: T | null, error: { message: string } | null): DataResult<T> {
   return error || data === null ? { data: null, error: error?.message ?? "The database returned no data." } : { data, error: null };
@@ -47,11 +48,20 @@ export class SupabaseDashboardDataSource implements DashboardDataSource {
   }
   async latestYoutubeSync(workspaceId: string) {
     const { data, error } = await this.client.from("youtube_sync_runs")
-      .select("state,last_error_code,created_at").eq("workspace_id", workspaceId)
+      .select("state,last_error_code,created_at,lease_expires_at").eq("workspace_id", workspaceId)
       .order("created_at", { ascending: false }).limit(1);
     if (error) return { data: null, error: error.message } as const;
     return { data: (data?.[0] as YouTubeSyncStatusRow | undefined) ?? null, error: null } as const;
   }
+  async youtubeWorkerStatus() {
+    const { data, error } = await (this.client.rpc as unknown as (name: string) => Promise<{ data: unknown; error: { message: string } | null }>)("get_youtube_worker_status");
+    if (error) return { data: null, error: error.message } as const;
+    const parsed = youtubeWorkerStatusSchema.safeParse(data);
+    return parsed.success
+      ? { data: parsed.data as YouTubeWorkerStatusRow, error: null } as const
+      : { data: null, error: "Worker status is temporarily unavailable." } as const;
+  }
+
 
 
   async projects(workspaceId: string) {

@@ -3,6 +3,7 @@ import { isDataError, type ResearchSourceRow } from "@/lib/dashboard/contracts";
 import { selectActiveDashboardChannel } from "@/lib/dashboard/loaders";
 import { getWorkspacePageSession } from "@/lib/dashboard/server";
 import { researchReadiness } from "@/lib/research/orchestrator";
+import { youtubeSyncExecutionState } from "@/lib/youtube/sync-execution";
 
 export default async function Home() {
   const session = await getWorkspacePageSession("/");
@@ -11,7 +12,7 @@ export default async function Home() {
     return <GrowthWorkspace displayName={session.displayName} workspaceName={session.workspaceName} signOutAction={session.signOutAction} mode="demo" dashboard={{ channel: null, ideas: [], approvals: [], activity: null }} readiness={{ status: "ready", label: "Demo mode ready" }} />;
   }
 
-  const [channels, ideas, approvals, usageRows, workspace, runs, packages] = await Promise.all([
+  const [channels, ideas, approvals, usageRows, workspace, runs, packages, latestYoutubeSync, youtubeWorkerStatus] = await Promise.all([
     session.source.channels(session.workspaceId),
     session.source.ideas(session.workspaceId),
     session.source.approvals(session.workspaceId),
@@ -19,6 +20,8 @@ export default async function Home() {
     session.source.workspace(session.workspaceId),
     session.source.researchRuns(session.workspaceId),
     session.source.packages(session.workspaceId),
+    session.source.latestYoutubeSync(session.workspaceId),
+    session.source.youtubeWorkerStatus(),
   ]);
   const successfulRuns = isDataError(runs) ? [] : runs.data.filter((run) => run.state === "completed");
   const sources = successfulRuns.length
@@ -28,8 +31,12 @@ export default async function Home() {
   let dashboard: GrowthWorkspaceDashboard | null = null;
   if (!isDataError(channels) && !isDataError(ideas) && !isDataError(approvals) && !isDataError(packages) && !isDataError(sources)) {
     const activeChannel = selectActiveDashboardChannel(channels.data);
+    const execution = isDataError(latestYoutubeSync) || isDataError(youtubeWorkerStatus)
+      ? "stalled"
+      : youtubeSyncExecutionState(latestYoutubeSync.data, youtubeWorkerStatus.data);
+    const channelStatus = execution === "queued" || execution === "running" ? "syncing" : execution === "stalled" || execution === "failed" ? "needs_attention" : "connected";
     dashboard = {
-      channel: activeChannel ? { name: activeChannel.title, status: "connected" } : null,
+      channel: activeChannel ? { name: activeChannel.title, status: channelStatus } : null,
       ideas: ideas.data.slice(0, 3).map((idea) => ({ id: idea.id, title: idea.title, score: idea.score, signal: null })),
       approvals: approvals.data.filter((approval) => approval.state === "pending").slice(0, 3).map((approval) => ({
         id: approval.id,

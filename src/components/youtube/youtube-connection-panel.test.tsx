@@ -122,11 +122,29 @@ describe("YouTubeConnectionPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Disconnect Google" }));
     fireEvent.click(screen.getByRole("checkbox", { name: /separate revocation action/i }));
     fireEvent.click(screen.getByRole("button", { name: "Approve and disconnect" }));
+
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/integrations/youtube/revocation-approval",
       "/api/integrations/youtube/disconnect",
     ]);
+  });
+
+  it.each([
+    ["queued", "Sync queued"],
+    ["running", "Sync running"],
+    ["stalled", "Sync needs operator attention"],
+    ["complete", "Latest sync complete"],
+  ] as const)("renders %s execution without claiming Vercel executes it", (syncExecution, heading) => {
+    render(<YouTubeConnectionPanel status="connected" workspaceId={workspaceId} syncExecution={syncExecution} channels={[
+      { id: channelId, title: "Studio", handle: "@studio", lastSyncedAt: null, status: "connected" },
+    ]} />);
+    expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(screen.getByText(/separately deployed long-running worker/i)).toBeInTheDocument();
+    expect(screen.getByText(/Vercel web deployment only queues/i)).toBeInTheDocument();
+    if (syncExecution === "stalled") {
+      expect(screen.getByRole("button", { name: "Sync now" })).toBeDisabled();
+    }
   });
 
   it("renders daily quota exhaustion truthfully and prevents another sync", () => {

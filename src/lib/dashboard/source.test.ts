@@ -7,6 +7,7 @@ describe("SupabaseDashboardDataSource.latestYoutubeSync", () => {
       state: "failed",
       last_error_code: "youtube_daily_quota_exceeded",
       created_at: "2026-08-03T20:00:00.000Z",
+      lease_expires_at: null,
     };
     const query = {
       select: vi.fn(),
@@ -35,4 +36,15 @@ describe("SupabaseDashboardDataSource.latestYoutubeSync", () => {
     const source = new SupabaseDashboardDataSource({ from: vi.fn(() => query) } as never);
     await expect(source.latestYoutubeSync("workspace-one")).resolves.toEqual({ data: null, error: null });
   });
+  it("reads only the coarse worker heartbeat contract", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { status: "healthy", lastSeenAt: "2026-08-03T20:00:00.000Z" }, error: null });
+    const source = new SupabaseDashboardDataSource({ rpc } as never);
+    await expect(source.youtubeWorkerStatus()).resolves.toEqual({ data: { status: "healthy", lastSeenAt: "2026-08-03T20:00:00.000Z" }, error: null });
+    expect(rpc).toHaveBeenCalledWith("get_youtube_worker_status");
+  });
+  it("rejects worker payloads that could expose an instance identifier", async () => {
+    const source = new SupabaseDashboardDataSource({ rpc: vi.fn().mockResolvedValue({ data: { status: "healthy", lastSeenAt: null, workerId: "host-name" }, error: null }) } as never);
+    await expect(source.youtubeWorkerStatus()).resolves.toEqual({ data: null, error: "Worker status is temporarily unavailable." });
+  });
+
 });

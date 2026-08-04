@@ -24,6 +24,8 @@ flowchart TB
   SAFETY -->|blocked| UI
   SAFETY -->|reserved| DISPATCH[On-demand worker dispatch]
   DISPATCH --> JOBS[Durable Supabase job queue]
+  UI --> YTQ[Bounded YouTube sync queue]
+  YTQ --> YTW[Dedicated long-running YouTube worker]
   UI --> STATUS[Authenticated run status]
   STATUS --> DB
   JOBS --> ORCH[Research orchestrator]
@@ -197,15 +199,16 @@ npm run verify
 
 Durable research runs stop for approval before provider execution. Approval atomically reserves the bounded credit estimate and checks the database control plane before scheduling background dispatch. The worker checks cancellation, kill switches, and concurrency before each paid call, then reconciles safe invocation and usage metadata. Missing configuration leaves work safely stopped; connected mode never substitutes demo evidence.
 
-`GET /api/health` reports liveness and non-sensitive configuration capability separately. Even with every credential present, paid research reports `hosted_verification_required` until the operator completes the [paid research safety runbook](docs/operations/research-safety-runbook.md). Health output never authorizes activation.
+`GET /api/health` reports web liveness, non-sensitive configuration capability, and a coarse YouTube-worker heartbeat separately. It exposes no worker identifier, tenant timing, or queue payload. Even with every credential present, paid research reports `hosted_verification_required` until the operator completes the [paid research safety runbook](docs/operations/research-safety-runbook.md). Health output never authorizes activation.
 
-A continuously running worker is still available for local development or a future dedicated worker host:
+Research and YouTube synchronization are separate long-running processes. The Vercel web deployment queues work but does not continuously execute either worker:
 
 ```bash
 npm run worker:research
+npm run worker:youtube
 ```
 
-See [Durable research jobs](docs/DURABLE_RESEARCH_JOBS.md) for dispatch recovery, lease/ack/fail contracts, deployment requirements, provider inputs, and rollback.
+See [Durable research jobs](docs/DURABLE_RESEARCH_JOBS.md) for research dispatch recovery and the [YouTube sync worker runbook](docs/operations/youtube-sync-worker.md) for deployment topology, heartbeat alerts, kill switch, and rollback.
 
 ## Configure integrations
 
