@@ -25,7 +25,7 @@ npm ci
 npm run worker:youtube
 ```
 
-Each process generates an ephemeral UUID. The UUID is used only for private leases and heartbeats; hostnames, usernames, tokens, channel identifiers, and queue payloads are not stored in the heartbeat ledger or returned by its status contract.
+Each process generates an ephemeral UUID used for private leases, heartbeats, and allowlisted operational log correlation. Hostnames, usernames, tokens, channel identifiers, and queue payloads are not stored in the heartbeat ledger or returned by its status contract.
 
 ## Heartbeat and alerts
 

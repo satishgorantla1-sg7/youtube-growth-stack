@@ -21,4 +21,4 @@ A queue becomes stalled only when objective evidence supports it: a running leas
 
 ## Consequences
 
-Operators must deploy and monitor another process. In exchange, customers see truthful execution state and alerts can distinguish web liveness from worker liveness. Heartbeats contain no payload or secrets and are retained for at most seven days by the bounded writer cleanup.
+Operators must deploy and monitor another process. In exchange, customers see truthful execution state and alerts can distinguish web liveness from worker liveness. Heartbeats contain no payload or secrets. The writer opportunistically removes rows older than seven days whenever a later heartbeat arrives; a final stale row can remain if no worker ever returns.
