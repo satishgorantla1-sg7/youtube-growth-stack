@@ -1,0 +1,222 @@
+import { z } from "zod";
+import type {
+  YouTubeChannel,
+  YouTubeChannelSnapshot,
+  YouTubeQuotaCharge,
+  YouTubeVideo,
+  YouTubeVideoSnapshot,
+} from "./youtube-sync-contracts";
+
+const syncSchema = z.object({
+  id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  connectionId: z.string().uuid(),
+  channelId: z.string().uuid().nullable(),
+  state: z.enum(["queued", "running", "completed", "failed", "cancelled"]),
+  maxPages: z.number().int().min(1).max(10),
+  maxItems: z.number().int().min(1).max(500),
+  correlationId: z.string().uuid(),
+  created: z.boolean().optional(),
+  pagesFetched: z.number().int().min(0).max(10).optional(),
+  itemsFetched: z.number().int().min(0).max(500).optional(),
+  leaseToken: z.string().uuid().optional(),
+  attemptCount: z.number().int().min(0).max(5).optional(),
+});
+
+export type YouTubeSyncRun = z.infer<typeof syncSchema>;
+
+const syncLeaseSchema = syncSchema.extend({
+  state: z.literal("running"),
+  leaseToken: z.string().uuid(),
+  attemptCount: z.number().int().min(1).max(5),
+  encryptedCredentials: z.string().min(1),
+  credentialVersion: z.string().min(1).max(80),
+  channelExternalId: z.string().min(1).max(128),
+  uploadsPlaylistId: z.string().min(1).max(128),
+  encryptedPageToken: z.string().min(1).nullable(),
+  pageTokenVersion: z.number().int().positive().nullable(),
+  cursorInitialized: z.boolean(),
+}).superRefine((value, context) => {
+  if ((value.encryptedPageToken === null) !== (value.pageTokenVersion === null)) {
+    context.addIssue({ code: "custom", message: "youtube_sync_cursor_invalid" });
+  }
+  if (!value.cursorInitialized && value.encryptedPageToken !== null) {
+    context.addIssue({ code: "custom", message: "youtube_sync_cursor_invalid" });
+  }
+});
+
+export type YouTubeSyncLease = z.infer<typeof syncLeaseSchema>;
+
+export type YouTubeSyncPage = {
+  channels: Array<{ channel: YouTubeChannel; snapshot: YouTubeChannelSnapshot }>;
+  videos: Array<{ video: YouTubeVideo; snapshot: YouTubeVideoSnapshot }>;
+};
+
+export type YouTubeSyncCursorWrite = {
+  encryptedPageToken: string | null;
+  pageTokenVersion: number | null;
+  cursorInitialized: true;
+};
+
+type RpcResult = Promise<{ data: unknown; error: { message: string } | null }>;
+const reconnectTransitionSchema = z.object({
+  id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  state: z.literal("failed"),
+  errorCode: z.literal("youtube_reconnect_required"),
+});
+const requeueTransitionSchema = z.discriminatedUnion("state", [
+  z.object({
+    id: z.string().uuid(), workspaceId: z.string().uuid(), state: z.literal("queued"),
+    errorCode: z.literal("youtube_token_refresh_locked"), attemptCount: z.number().int().min(1).max(4),
+    retryAfterSeconds: z.number().int().positive(), availableAt: z.string().datetime({ offset: true }),
+  }),
+  z.object({
+    id: z.string().uuid(), workspaceId: z.string().uuid(), state: z.literal("failed"),
+    errorCode: z.literal("youtube_sync_retry_exhausted"), attemptCount: z.literal(5),
+  }),
+]);
+export type YouTubeReconnectTransition = z.infer<typeof reconnectTransitionSchema>;
+export type YouTubeRefreshLockTransition = z.infer<typeof requeueTransitionSchema>;
+
+export type YouTubeSyncRpcClient = { rpc(name: string, args: Record<string, unknown>): RpcResult };
+
+export interface YouTubeSyncRepository {
+  begin(input: {
+    workspaceId: string; connectionId: string; channelId?: string;
+    idempotencyKey: string; maxPages: number; maxItems: number;
+  }): Promise<YouTubeSyncRun>;
+  lease(workerId: string, leaseSeconds: number): Promise<YouTubeSyncLease | null>;
+  persistPage(run: YouTubeSyncRun, page: YouTubeSyncPage, cursor: YouTubeSyncCursorWrite): Promise<{ pagesFetched: number; itemsFetched: number }>;
+  recordQuota(run: YouTubeSyncRun, charge: YouTubeQuotaCharge): Promise<boolean>;
+  failForReconnect(run: YouTubeSyncRun): Promise<YouTubeReconnectTransition>;
+  requeueAfterRefreshLock(run: YouTubeSyncRun): Promise<YouTubeRefreshLockTransition>;
+  finish(run: YouTubeSyncRun, result: {
+    state: "completed" | "failed" | "cancelled"; pagesFetched: number; itemsFetched: number; errorCode?: string;
+  }): Promise<void>;
+}
+
+const progressSchema = z.object({
+  pagesFetched: z.number().int().min(0).max(10),
+  itemsFetched: z.number().int().min(0).max(500),
+});
+
+function requireLease(run: YouTubeSyncRun): string {
+  if (!run.leaseToken || run.state !== "running") throw new Error("youtube_sync_lease_required");
+  return run.leaseToken;
+}
+
+function channelRow(item: YouTubeSyncPage["channels"][number]) {
+  return {
+    external_id: item.channel.externalId,
+    title: item.channel.title,
+    description: item.channel.description,
+    handle: item.channel.handle,
+    thumbnail_url: item.channel.thumbnailUrl,
+    uploads_playlist_id: item.channel.uploadsPlaylistId,
+    country_code: item.channel.countryCode,
+    published_at: item.channel.publishedAt,
+    etag: item.channel.etag,
+    account_kind: item.channel.accountKind,
+    subscriber_count: item.snapshot.subscriberCount,
+    view_count: item.snapshot.viewCount,
+    video_count: item.snapshot.videoCount,
+    hidden_subscriber_count: item.snapshot.hiddenSubscriberCount,
+    captured_at: item.snapshot.capturedAt,
+  };
+}
+
+function videoRow(item: YouTubeSyncPage["videos"][number]) {
+  return {
+    external_id: item.video.externalId,
+    channel_external_id: item.video.channelExternalId,
+    title: item.video.title,
+    description: item.video.description,
+    thumbnail_url: item.video.thumbnailUrl,
+    published_at: item.video.publishedAt,
+    duration_seconds: item.video.durationSeconds,
+    privacy_status: item.video.privacyStatus,
+    live_broadcast_content: item.video.liveBroadcastContent,
+    etag: item.video.etag,
+    view_count: item.snapshot.viewCount,
+    like_count: item.snapshot.likeCount,
+    comment_count: item.snapshot.commentCount,
+    captured_at: item.snapshot.capturedAt,
+  };
+}
+
+export class SupabaseYouTubeSyncRepository implements YouTubeSyncRepository {
+  constructor(private readonly client: YouTubeSyncRpcClient) {}
+
+  async begin(input: {
+    workspaceId: string; connectionId: string; channelId?: string;
+    idempotencyKey: string; maxPages: number; maxItems: number;
+  }): Promise<YouTubeSyncRun> {
+    const { data, error } = await this.client.rpc("begin_youtube_sync", {
+      target_workspace_id: input.workspaceId, target_connection_id: input.connectionId,
+      target_channel_id: input.channelId, request_idempotency_key: input.idempotencyKey,
+      request_max_pages: input.maxPages, request_max_items: input.maxItems,
+    });
+    if (error) throw new Error(error.message);
+    return syncSchema.parse(data);
+  }
+
+  async lease(workerId: string, leaseSeconds: number): Promise<YouTubeSyncLease | null> {
+    const { data, error } = await this.client.rpc("lease_youtube_sync", { worker_id: workerId, lease_seconds: leaseSeconds });
+    if (error) throw new Error(error.message);
+    return data === null ? null : syncLeaseSchema.parse(data);
+  }
+
+  async persistPage(run: YouTubeSyncRun, page: YouTubeSyncPage, cursor: YouTubeSyncCursorWrite): Promise<{ pagesFetched: number; itemsFetched: number }> {
+    const { data, error } = await this.client.rpc("persist_youtube_sync_page", {
+      target_sync_run_id: run.id, target_lease_token: requireLease(run),
+      channel_rows: page.channels.map(channelRow), video_rows: page.videos.map(videoRow),
+      target_encrypted_page_token: cursor.encryptedPageToken,
+      target_page_token_version: cursor.pageTokenVersion,
+      target_cursor_initialized: cursor.cursorInitialized,
+    });
+    if (error) throw new Error(error.message);
+    return progressSchema.parse(data);
+  }
+
+  async recordQuota(run: YouTubeSyncRun, charge: YouTubeQuotaCharge): Promise<boolean> {
+    if (charge.units === 0) return false;
+    const { data, error } = await this.client.rpc("record_youtube_quota", {
+      target_sync_run_id: run.id, target_lease_token: requireLease(run),
+      target_operation: charge.operation, target_quota_units: charge.units,
+      request_idempotency_key: charge.requestIdempotencyKey,
+    });
+    if (error) throw new Error(error.message);
+    return z.boolean().parse(data);
+  }
+
+  async failForReconnect(run: YouTubeSyncRun): Promise<YouTubeReconnectTransition> {
+    const { data, error } = await this.client.rpc("fail_youtube_sync_for_reconnect", {
+      target_workspace_id: run.workspaceId,
+      target_sync_run_id: run.id,
+      target_lease_token: requireLease(run),
+    });
+    if (error) throw new Error(error.message);
+    return reconnectTransitionSchema.parse(data);
+  }
+
+  async requeueAfterRefreshLock(run: YouTubeSyncRun): Promise<YouTubeRefreshLockTransition> {
+    const { data, error } = await this.client.rpc("requeue_youtube_sync_after_refresh_lock", {
+      target_workspace_id: run.workspaceId,
+      target_sync_run_id: run.id,
+      target_lease_token: requireLease(run),
+    });
+    if (error) throw new Error(error.message);
+    return requeueTransitionSchema.parse(data);
+  }
+  async finish(run: YouTubeSyncRun, result: {
+    state: "completed" | "failed" | "cancelled"; pagesFetched: number; itemsFetched: number; errorCode?: string;
+  }): Promise<void> {
+    const { error } = await this.client.rpc("finish_youtube_sync", {
+      target_sync_run_id: run.id, target_lease_token: requireLease(run), target_state: result.state,
+      target_pages_fetched: result.pagesFetched, target_items_fetched: result.itemsFetched,
+      target_error_code: result.errorCode,
+    });
+    if (error) throw new Error(error.message);
+  }
+}

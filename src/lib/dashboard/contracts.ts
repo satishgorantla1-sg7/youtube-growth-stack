@@ -1,6 +1,7 @@
 import type { Database } from "@/lib/supabase/database.types";
 
-export type ChannelRow = Pick<Database["public"]["Tables"]["channels"]["Row"], "id" | "title" | "handle" | "connection_state" | "last_synced_at">;
+export type ChannelRow = Pick<Database["public"]["Tables"]["channels"]["Row"], "id" | "title" | "handle" | "connection_state" | "last_synced_at" | "is_selected">;
+export type YouTubeSyncStatusRow = Pick<Database["public"]["Tables"]["youtube_sync_runs"]["Row"], "state" | "last_error_code" | "created_at">;
 export type ProjectRow = Pick<Database["public"]["Tables"]["projects"]["Row"], "id" | "name" | "niche" | "status" | "created_at">;
 export type ResearchRunRow = Pick<Database["public"]["Tables"]["research_runs"]["Row"], "id" | "prompt" | "mode" | "state" | "estimated_credits" | "actual_credits" | "created_at" | "completed_at" | "error_code">;
 export type ResearchSourceRow = Pick<Database["public"]["Tables"]["research_sources"]["Row"], "id" | "research_run_id">;
@@ -41,6 +42,7 @@ export interface DashboardDataSource {
   ideasById(workspaceId: string, ideaIds: string[]): Promise<DataResult<Pick<IdeaRow, "id" | "title">[]>>;
   approvals(workspaceId: string): Promise<DataResult<ApprovalRow[]>>;
   channels(workspaceId: string): Promise<DataResult<ChannelRow[]>>;
+  latestYoutubeSync(workspaceId: string): Promise<DataResult<YouTubeSyncStatusRow | null>>;
   projects(workspaceId: string): Promise<DataResult<ProjectRow[]>>;
   usage(workspaceId: string): Promise<DataResult<UsageRow[]>>;
   workspace(workspaceId: string): Promise<DataResult<WorkspaceRow>>;

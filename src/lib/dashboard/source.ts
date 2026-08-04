@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
-import type { ApprovalRow, ChannelRow, DashboardDataSource, DataResult, IdeaRow, PackageRow, ProjectRow, ResearchRunRow, ResearchSourceRow, UsageRow, WorkspaceRow } from "./contracts";
+import type { ApprovalRow, ChannelRow, DashboardDataSource, DataResult, IdeaRow, PackageRow, ProjectRow, ResearchRunRow, ResearchSourceRow, UsageRow, WorkspaceRow, YouTubeSyncStatusRow } from "./contracts";
 
 function result<T>(data: T | null, error: { message: string } | null): DataResult<T> {
   return error || data === null ? { data: null, error: error?.message ?? "The database returned no data." } : { data, error: null };
@@ -42,9 +42,17 @@ export class SupabaseDashboardDataSource implements DashboardDataSource {
   }
 
   async channels(workspaceId: string) {
-    const { data, error } = await this.client.from("channels").select("id,title,handle,connection_state,last_synced_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(20);
+    const { data, error } = await this.client.from("channels").select("id,title,handle,connection_state,last_synced_at,is_selected").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(50);
     return result(data as ChannelRow[] | null, error);
   }
+  async latestYoutubeSync(workspaceId: string) {
+    const { data, error } = await this.client.from("youtube_sync_runs")
+      .select("state,last_error_code,created_at").eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false }).limit(1);
+    if (error) return { data: null, error: error.message } as const;
+    return { data: (data?.[0] as YouTubeSyncStatusRow | undefined) ?? null, error: null } as const;
+  }
+
 
   async projects(workspaceId: string) {
     const { data, error } = await this.client.from("projects").select("id,name,niche,status,created_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(50);

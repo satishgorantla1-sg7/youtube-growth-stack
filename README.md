@@ -2,7 +2,7 @@
 
 An open-source, voice-first research and content-planning SaaS for YouTube creators. Connect a channel, ask the growth agent a question, review its evidence, and approve a complete content package: ideas, titles, thumbnail concepts, hooks, an outline, and a script.
 
-> **Current status:** controlled-beta foundation. Supabase identity, OpenAI voice, approval-gated jobs, bounded Apify/Firecrawl execution, research budgets, database controls, cancellation, live run status, and persisted evidence are implemented. Demo mode remains credential-free. Paid provider activation still requires hosted safety verification and separate approval; evidence-grounded idea synthesis and YouTube OAuth are later slices.
+> **Current status:** controlled-beta foundation. Supabase identity, OpenAI voice, approval-gated jobs, bounded Apify/Firecrawl execution, research budgets, database controls, cancellation, persisted evidence, and a server-only read-only YouTube connection and sync pipeline are implemented. Demo mode remains credential-free. Paid provider and Google OAuth activation still require hosted safety verification and separate approval; evidence-grounded idea synthesis remains a later slice.
 
 ![MIT License](https://img.shields.io/badge/license-MIT-111111)
 ![Next.js](https://img.shields.io/badge/Next.js-16-111111)
@@ -218,7 +218,7 @@ Copy `.env.example` to `.env.local` and add only the integrations you are testin
 | Voice | `OPENAI_API_KEY` and model overrides | Browser speech output + demo transcript |
 | YouTube research | `APIFY_API_TOKEN` and actor ID | Deterministic source only in demo mode |
 | Web research | `FIRECRAWL_API_KEY` | Deterministic source only in demo mode |
-| Owned channel | Google OAuth variables | Example connected channel |
+| Owned channel | Google OAuth, redirect URI, and versioned token-encryption variables | No connection; demo remains credential-free |
 
 The default recorded-turn transcription model is `gpt-4o-transcribe`, which improves on original Whisper models. The realtime model is configurable because audio model availability evolves. Permanent OpenAI keys remain server-side; the Realtime route returns only short-lived client secrets. See the [OpenAI model catalog](https://developers.openai.com/api/docs/models) and [GPT-4o Transcribe](https://developers.openai.com/api/docs/models/gpt-4o-transcribe).
 
@@ -234,7 +234,7 @@ Before enabling production credentials, read the [public-launch safety and opera
 
 1. Repository foundation, demo experience, schemas, agent instructions, and CI.
 2. Supabase authentication, onboarding, workspace creation, and tested RLS. (complete)
-3. YouTube OAuth and channel snapshot ingestion.
+3. Read-only YouTube OAuth, owned/Brand channel selection, bounded snapshot ingestion, reconnect, and disconnect. (implemented; hosted activation pending)
 4. Durable approval-gated worker, on-demand dispatch, status polling, and evidence display. (complete)
 5. Production Firecrawl and Apify contracts with bounded requests. (complete; quota dashboards remain)
 6. Evidence-grounded synthesis and versioned content packages.

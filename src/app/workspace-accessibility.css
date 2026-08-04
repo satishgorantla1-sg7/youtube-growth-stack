@@ -1,0 +1,4 @@
+@media (max-width: 920px) {
+  .sidebar { visibility: hidden; }
+  .sidebar-open { visibility: visible; }
+}

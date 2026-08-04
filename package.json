@@ -11,6 +11,7 @@
     "build": "next build",
     "start": "next start",
     "worker:research": "tsx scripts/research-worker.ts",
+    "worker:youtube": "tsx scripts/youtube-worker.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -1,0 +1,49 @@
+.workspace-shell-body > .youtube-settings-stack, .workspace-shell-body > .settings-breadcrumb { width: min(1120px, calc(100% - 56px)); margin: 28px auto 0; }
+.settings-breadcrumb { display: flex; align-items: center; gap: 8px; color: var(--muted-foreground); font-size: 12px; }
+.settings-breadcrumb a { color: var(--accent-foreground); font-weight: 750; }
+.settings-provider-card, .youtube-danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.settings-provider-card h2, .settings-provider-card p { margin: 0; }
+.settings-provider-card h2 { margin-top: 4px; font-family: Georgia, serif; font-size: 24px; font-weight: 500; }
+.settings-provider-card p { margin-top: 6px; color: var(--muted-foreground); font-size: 12px; }
+.settings-provider-card > a { padding: 10px 13px; border-radius: 10px; color: white; background: var(--foreground); font-size: 11px; font-weight: 750; text-decoration: none; }
+.youtube-settings-stack, .youtube-status-copy { display: grid; gap: 16px; }
+.youtube-status { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; }
+.youtube-status-icon, .youtube-channel-mark { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 13px; color: var(--primary); background: color-mix(in oklch, var(--primary) 11%, white); }
+.youtube-status-icon svg { width: 22px; }
+.youtube-status-copy { gap: 7px; }
+.youtube-eyebrow { margin: 0 !important; color: var(--primary) !important; font-size: 9px !important; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+.youtube-status h2, .youtube-channel-picker h2, .youtube-channel-card h2, .youtube-danger-zone h2 { margin: 0; font-family: Georgia, serif; font-size: 22px; font-weight: 500; }
+.youtube-status-copy > p:not(.youtube-eyebrow), .youtube-danger-zone p, .youtube-channel-card > p { margin: 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.6; }
+.youtube-action-message { padding: 10px 12px; border-radius: 9px; color: var(--destructive) !important; background: color-mix(in oklch, var(--destructive) 8%, var(--card)); }
+.youtube-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.youtube-actions button, .youtube-danger-zone button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 13px; border: 1px solid var(--border); border-radius: 10px; font-size: 11px; font-weight: 750; }
+.youtube-primary-action { color: white; border-color: var(--foreground) !important; background: var(--foreground); }
+.youtube-actions button:disabled, .youtube-danger-zone button:disabled { cursor: not-allowed; color: var(--muted-foreground); background: var(--muted); opacity: .76; }
+.youtube-actions > p, .youtube-unavailable { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--muted-foreground); font-size: 10px; }
+.youtube-actions a { color: var(--accent-foreground); font-weight: 750; }
+.youtube-channel-picker .panel-heading > div, .youtube-danger-zone > div { display: grid; gap: 5px; }
+.youtube-channel-picker fieldset { display: grid; gap: 9px; margin: 18px 0 0; padding: 0; border: 0; }
+.youtube-channel-picker legend { margin-bottom: 9px; font-size: 11px; font-weight: 750; }
+.youtube-channel-picker label { display: flex; align-items: center; gap: 10px; padding: 11px; border: 1px solid var(--border); border-radius: 10px; }
+.youtube-channel-picker label span { display: grid; gap: 2px; }
+.youtube-channel-picker label small, .youtube-channel-heading p { color: var(--muted-foreground); }
+.youtube-channel-list { display: grid; gap: 12px; }
+.youtube-channel-heading { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.youtube-channel-heading h2, .youtube-channel-heading p { margin: 0; }
+.youtube-channel-heading p { margin-top: 3px; font-size: 10px; }
+.youtube-channel-mark { width: 40px; height: 40px; }
+.youtube-channel-mark svg { width: 20px; }
+.youtube-channel-card > p { margin-top: 12px; }
+.youtube-lifecycle-actions { margin-top: 13px; }
+.youtube-danger-zone { border-color: color-mix(in oklch, var(--destructive) 30%, var(--border)); }
+.youtube-danger-zone button { flex: 0 0 auto; }
+.youtube-primary-action:focus-visible, .youtube-actions a:focus-visible, .settings-provider-card > a:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+@media (max-width: 720px) {
+  .workspace-shell-body > .youtube-settings-stack, .workspace-shell-body > .settings-breadcrumb { width: min(100% - 28px, 1120px); margin-top: 18px; }
+  .settings-provider-card, .youtube-danger-zone { align-items: stretch; flex-direction: column; }
+  .settings-provider-card > a, .youtube-danger-zone button { width: 100%; text-align: center; }
+  .youtube-status { grid-template-columns: 1fr; }
+  .youtube-channel-heading { grid-template-columns: auto minmax(0, 1fr); }
+  .youtube-channel-heading > .status-pill { grid-column: 1 / -1; justify-self: start; }
+  .youtube-actions button { width: 100%; }
+}

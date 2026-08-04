@@ -12,6 +12,12 @@ const privateSchema = z.object({
   MAX_RESEARCH_SOURCES: z.coerce.number().int().positive().max(100).default(25),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   RESEARCH_WORKER_ID: z.string().min(1).max(80).default("research-vercel"),
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  YOUTUBE_REDIRECT_URI: z.string().url().optional(),
+  YOUTUBE_TOKEN_ENCRYPTION_KEY: z.string().min(1).optional(),
+  YOUTUBE_TOKEN_ENCRYPTION_KEY_VERSION: z.string().regex(/^[a-zA-Z0-9_-]{1,32}$/).default("v1"),
+  YOUTUBE_TOKEN_DECRYPTION_KEYS: z.string().optional(),
 });
 
 export function serverEnv() { return privateSchema.parse(process.env); }
