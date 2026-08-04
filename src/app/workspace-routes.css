@@ -1,0 +1,71 @@
+.workspace-shell-body {
+  min-width: 0;
+}
+
+.workspace-shell-body > .panel,
+.workspace-shell-body > .workspace-record-list {
+  width: min(1120px, calc(100% - 56px));
+  margin: 28px auto 0;
+}
+
+.workspace-shell-body > :last-child {
+  margin-bottom: 54px;
+}
+
+.workspace-record-list {
+  display: grid;
+  gap: 14px;
+}
+
+.workspace-state {
+  display: grid;
+  gap: 8px;
+}
+
+.workspace-state h2,
+.workspace-record-card h2 {
+  margin: 0;
+  font-family: Georgia, serif;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.workspace-state p,
+.workspace-record-body p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.workspace-state-error {
+  border-color: color-mix(in oklch, var(--destructive) 42%, var(--border));
+  background: color-mix(in oklch, var(--destructive) 5%, var(--card));
+}
+
+.workspace-state-info {
+  border-color: color-mix(in oklch, var(--accent-foreground) 28%, var(--border));
+}
+
+.workspace-record-card .panel-heading {
+  gap: 16px;
+}
+
+.workspace-record-body {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+}
+
+.workspace-shell-body > .panel .auth-form {
+  max-width: 620px;
+  margin-top: 18px;
+}
+
+@media (max-width: 720px) {
+  .workspace-shell-body > .panel,
+  .workspace-shell-body > .workspace-record-list {
+    width: min(100% - 28px, 1120px);
+    margin-top: 18px;
+  }
+}

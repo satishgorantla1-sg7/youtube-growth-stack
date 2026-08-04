@@ -271,7 +271,7 @@ describe("GrowthWorkspace reply speech", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Listen to reply" })[0]);
 
     expect(await screen.findByText("Audio playback is unavailable in this browser. You can still read the reply.")).toBeInTheDocument();
-    expect(screen.getByText(/Good morning/)).toBeInTheDocument();
+    expect(screen.getByText(/Welcome, Creator/)).toBeInTheDocument();
   });
 
   it("stops microphone tracks when the workspace unmounts during recording", async () => {
