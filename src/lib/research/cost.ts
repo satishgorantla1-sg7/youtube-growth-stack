@@ -9,3 +9,9 @@ export function createResearchPlan(input: ResearchRequest): ResearchPlan {
   const estimatedCredits = Math.min(100, batches * input.sources.length * modeMultiplier);
   return { prompt: input.prompt, mode: input.mode, sources: input.sources, maxSources, estimatedCredits };
 }
+
+export function researchCreditsForUnits(units: number, mode: ResearchPlan["mode"]): number {
+  const boundedUnits = Math.min(Math.max(Math.trunc(units), 0), 25);
+  if (boundedUnits === 0) return 0;
+  return Math.ceil(boundedUnits / 5) * (mode === "deep" ? 2 : 1);
+}

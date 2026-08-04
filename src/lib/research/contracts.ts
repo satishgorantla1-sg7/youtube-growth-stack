@@ -41,10 +41,39 @@ export type ApprovalResult = {
   decidedAt: string;
 };
 
+export type PaidResearchProvider = "apify" | "firecrawl";
+
+export type ProviderInvocation = {
+  id: string;
+  state: "started" | "succeeded" | "failed" | "cancelled";
+  created: boolean;
+};
+
+export type ProviderInvocationResult = {
+  state: "succeeded" | "failed" | "cancelled";
+  actualUnits: number;
+  credits: number;
+  errorCode?: string;
+  metadata?: Record<string, string | number | boolean>;
+};
+
 export interface ResearchJobRepository {
   createOrGet(input: ResearchRequest): Promise<ResearchRun>;
   decideApproval(input: { approvalId: string; decision: "approved" | "rejected"; note?: string }): Promise<ApprovalResult>;
   lease(workerId: string, leaseSeconds: number): Promise<ResearchJob | null>;
   ack(job: ResearchJob, sources: ResearchSource[]): Promise<void>;
-  fail(job: ResearchJob, errorCode: string, retryable: boolean): Promise<"queued" | "dead_letter">;
+  fail(job: ResearchJob, errorCode: string, retryable: boolean): Promise<"queued" | "dead_letter" | "cancelled">;
+}
+
+export interface ResearchSafetyRepository extends ResearchJobRepository {
+  beginProviderInvocation(job: ResearchJob, input: {
+    provider: PaidResearchProvider;
+    operation: string;
+    requestedUnits: number;
+    idempotencyKey: string;
+  }): Promise<ProviderInvocation>;
+  finishProviderInvocation(invocationId: string, result: ProviderInvocationResult): Promise<void>;
+  settleUsage(job: ResearchJob, actualCredits: number): Promise<void>;
+  cancellationRequested(job: ResearchJob): Promise<boolean>;
+  acknowledgeCancellation(job: ResearchJob, actualCredits: number): Promise<void>;
 }
