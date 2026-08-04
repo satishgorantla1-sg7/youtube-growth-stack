@@ -29,7 +29,7 @@ export function ResearchHistory({ result, filters }: { result: ResearchHistoryRe
     </form>
     {result.items.length ? <div className="research-history" aria-label="Research runs">{result.items.map((run) => <Link className="research-run-card panel" href={`/research/${run.id}`} key={run.id}>
       <div className="research-run-heading"><span className={`research-state state-${run.state}`}>{labels[run.state]}</span><span>{run.mode} research</span></div>
-      <h2>{run.prompt}</h2><p>{explanations[run.state]}</p>
+      <h2 className="research-run-title">{run.prompt}</h2><p>{explanations[run.state]}</p>
       <dl><div><dt><FolderKanban size={14} />Project</dt><dd>{run.projectName ?? "Unassigned"}</dd></div><div><dt><FileSearch size={14} />Evidence</dt><dd>{run.sourceCount} source{run.sourceCount === 1 ? "" : "s"}</dd></div><div><dt><Clock3 size={14} />Created</dt><dd>{formatDate(run.createdAt)}</dd></div></dl>
     </Link>)}</div> : <section className="panel research-empty"><FileSearch size={24}/><h2>No matching research</h2><p>No workspace runs match these filters. Clear the filters or ask the growth agent to plan a new run.</p></section>}
     <nav className="research-pagination" aria-label="Research history pages"><Link aria-disabled={!result.hasPrevious} tabIndex={result.hasPrevious ? 0 : -1} href={result.hasPrevious ? search(filters, result.page - 1) : search(filters, result.page)}>Previous</Link><span>Page {result.page}</span><Link aria-disabled={!result.hasNext} tabIndex={result.hasNext ? 0 : -1} href={result.hasNext ? search(filters, result.page + 1) : search(filters, result.page)}>Next</Link></nav>
@@ -39,7 +39,7 @@ export function ResearchHistory({ result, filters }: { result: ResearchHistoryRe
 export function ResearchDetail({ run, canManage = false }: { run: ResearchRunDetail; canManage?: boolean }) {
   return <div className="research-detail">
     <Link className="research-back" href="/research"><ArrowLeft size={15}/>Back to research</Link>
-    <section className="panel research-detail-summary"><div className="research-run-heading"><span className={`research-state state-${run.state}`}>{labels[run.state]}</span><span>{run.mode} research</span></div><h1>{run.prompt}</h1><p>{explanations[run.state]}</p>
+    <section className="panel research-detail-summary"><div className="research-run-heading"><span className={`research-state state-${run.state}`}>{labels[run.state]}</span><span>{run.mode} research</span></div><h1 className="research-run-title">{run.prompt}</h1><p>{explanations[run.state]}</p>
       <dl><div><dt>Project</dt><dd>{run.projectName ?? "Unassigned"}</dd></div><div><dt>Created</dt><dd>{formatDate(run.createdAt)}</dd></div><div><dt>Completed</dt><dd>{formatDate(run.completedAt)}</dd></div><div><dt>{run.actualCredits === null ? "Estimated credits" : "Actual credits"}</dt><dd>{run.actualCredits ?? run.estimatedCredits}</dd></div></dl>
       {run.errorCode ? <div className="research-error"><AlertTriangle size={16}/><span>Run code: {run.errorCode}</span></div> : null}
       <ResearchLifecycleControls runId={run.id} state={run.state} canManage={canManage} />

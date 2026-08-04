@@ -151,7 +151,6 @@ export function GrowthWorkspace({
   readiness,
   navigationCounts,
   mode = "connected",
-  researchEnabled = true,
 }: GrowthWorkspaceProps) {
   const [messages, setMessages] = useState<Message[]>(() => starterMessages(displayName));
   const [prompt, setPrompt] = useState("");
@@ -283,19 +282,7 @@ export function GrowthWorkspace({
     };
   }, [releaseReplyAudio]);
 
-  useEffect(() => {
-    if (researchEnabled || recorder.current?.state !== "recording") return;
-    recorder.current.onstop = null;
-    recorder.current.stop();
-    recorder.current = null;
-    microphoneStream.current?.getTracks().forEach((track) => track.stop());
-    microphoneStream.current = null;
-    chunks.current = [];
-    setVoiceStatus("idle");
-  }, [researchEnabled]);
-
   const submitPrompt = useCallback(async (value: string) => {
-    if (!researchEnabled) return;
     const clean = value.trim();
     if (!clean || isThinking) return;
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: "user", text: clean }]);
@@ -308,7 +295,7 @@ export function GrowthWorkspace({
         body: JSON.stringify({ prompt: clean, workspaceId, mode: "quick", sources: ["youtube", "web"], idempotencyKey: crypto.randomUUID() }),
       });
       const result = (await response.json()) as ResearchResponse;
-      if (!response.ok) throw new Error(result.error ?? "research_run_failed");
+      if (!response.ok) throw new Error(result.message ?? "research_run_failed");
       const reply = result.message ?? "I queued the research. I’ll bring the evidence and draft to your approval queue.";
       const approval = result.state === "awaiting_approval" && result.approvalId && result.runId ? {
         approvalId: result.approvalId,
@@ -319,15 +306,17 @@ export function GrowthWorkspace({
         status: "pending" as const,
       } : undefined;
       setMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", text: reply, approval }]);
-    } catch {
+    } catch (error) {
       setMessages((current) => [
         ...current,
-        { id: crypto.randomUUID(), role: "assistant", text: "I couldn’t prepare that research plan. Check your connection and try again." },
+        { id: crypto.randomUUID(), role: "assistant", text: error instanceof Error && error.message !== "research_run_failed"
+          ? error.message
+          : "Research is unavailable right now. Please try again shortly." },
       ]);
     } finally {
       setIsThinking(false);
     }
-  }, [isThinking, researchEnabled, workspaceId]);
+  }, [isThinking, workspaceId]);
 
   const pollResearchRun = useCallback(async (messageId: string, runId: string) => {
     const request = new AbortController();
@@ -400,7 +389,6 @@ export function GrowthWorkspace({
   }
 
   async function toggleRecording() {
-    if (!researchEnabled) return;
     if (voiceStatus === "listening" && recorder.current) {
       setVoiceStatus("processing");
       recorder.current.stop();
@@ -460,7 +448,7 @@ export function GrowthWorkspace({
 
   async function confirmVoiceTranscript() {
     const transcript = voiceTranscript.trim();
-    if (!researchEnabled || !transcript || isThinking) return;
+    if (!transcript || isThinking) return;
     setVoiceTranscript("");
     setVoiceStatus("idle");
     await submitPrompt(transcript);
@@ -582,11 +570,10 @@ export function GrowthWorkspace({
                     aria-label="Review voice transcript"
                     value={voiceTranscript}
                     onChange={(event) => setVoiceTranscript(event.target.value)}
-                    disabled={!researchEnabled}
                   />
                   <div className="voice-review-actions">
                     <button type="button" onClick={() => { setVoiceTranscript(""); setVoiceStatus("idle"); }}>Discard</button>
-                    <button type="button" onClick={() => void confirmVoiceTranscript()} disabled={!researchEnabled || !voiceTranscript.trim() || isThinking}>Send transcript to agent</button>
+                    <button type="button" onClick={() => void confirmVoiceTranscript()} disabled={!voiceTranscript.trim() || isThinking}>Send transcript to agent</button>
                   </div>
                 </div>
               ) : null}
@@ -595,7 +582,6 @@ export function GrowthWorkspace({
                 placeholder="Ask for ideas, analyse a competitor, or build a complete video package…"
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                disabled={!researchEnabled}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
@@ -608,7 +594,7 @@ export function GrowthWorkspace({
                   id="voice-upload-consent"
                   type="checkbox"
                   checked={voiceConsent}
-                  disabled={!researchEnabled || voiceStatus === "listening" || voiceStatus === "processing"}
+                  disabled={voiceStatus === "listening" || voiceStatus === "processing"}
                   onChange={(event) => setVoiceConsent(event.target.checked)}
                 />
                 <span id="voice-upload-disclosure">I consent to this recording being uploaded to OpenAI for transcription. Growth Stack does not store the raw audio.</span>
@@ -631,18 +617,18 @@ export function GrowthWorkspace({
                     onClick={toggleRecording}
                     aria-label={voiceStatus === "listening" ? "Stop recording" : "Start recording"}
                     aria-describedby="voice-upload-disclosure"
-                    disabled={!researchEnabled || !voiceConsent || voiceStatus === "processing" || voiceStatus === "review"}
+                    disabled={!voiceConsent || voiceStatus === "processing" || voiceStatus === "review"}
                   >
                     {voiceStatus === "listening" ? <StopCircle size={23} /> : <Mic size={23} />}
                   </button>
-                  <button className="send-button" type="submit" aria-label="Send message to growth agent" disabled={!researchEnabled || !prompt.trim() || isThinking}><ChevronRight size={21} /></button>
+                  <button className="send-button" type="submit" aria-label="Send message to growth agent" disabled={!prompt.trim() || isThinking}><ChevronRight size={21} /></button>
                 </div>
               </div>
             </form>
             <div className="suggestions">
-              <button disabled={!researchEnabled} onClick={() => setPrompt("Find content gaps in AI productivity this week")}>Find content gaps</button>
-              <button disabled={!researchEnabled} onClick={() => setPrompt("Analyse my top three competitors")}>Analyse competitors</button>
-              <button disabled={!researchEnabled} onClick={() => setPrompt("Build a full video package from my strongest idea")}>Build a video package</button>
+              <button onClick={() => setPrompt("Find content gaps in AI productivity this week")}>Find content gaps</button>
+              <button onClick={() => setPrompt("Analyse my top three competitors")}>Analyse competitors</button>
+              <button onClick={() => setPrompt("Build a full video package from my strongest idea")}>Build a video package</button>
             </div>
           </section>
 
