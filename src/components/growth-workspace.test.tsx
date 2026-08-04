@@ -288,6 +288,78 @@ describe("GrowthWorkspace reply speech", () => {
     expect(stopTrack).toHaveBeenCalledTimes(1);
   });
 });
+describe("GrowthWorkspace readiness", () => {
+  it("fails closed across text, voice, and suggestions when the server gate is closed", () => {
+    const getUserMedia = setMicrophone();
+    const fetchMock = mockVoiceFetch();
+    const view = render(<GrowthWorkspace researchEnabled />);
+
+    const composer = screen.getByLabelText(/message your growth agent/i);
+    const consent = screen.getByLabelText(/I consent to this recording/i);
+    fireEvent.change(composer, { target: { value: "Stored prompt" } });
+    fireEvent.click(consent);
+    view.rerender(<GrowthWorkspace researchEnabled={false} />);
+
+    const microphone = screen.getByRole("button", { name: /start recording/i });
+    const suggestions = [
+      screen.getByRole("button", { name: "Find content gaps" }),
+      screen.getByRole("button", { name: "Analyse competitors" }),
+      screen.getByRole("button", { name: "Build a video package" }),
+    ];
+
+    expect(composer).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send message to growth agent" })).toBeDisabled();
+    expect(consent).toBeDisabled();
+    expect(microphone).toBeDisabled();
+    suggestions.forEach((suggestion) => expect(suggestion).toBeDisabled());
+
+    fireEvent.keyDown(composer, { key: "Enter" });
+    fireEvent.click(consent);
+    fireEvent.click(microphone);
+    suggestions.forEach((suggestion) => fireEvent.click(suggestion));
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("stops an active microphone without transcription when the server gate closes", async () => {
+    const stopTrack = vi.fn();
+    setMicrophone(vi.fn().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] }));
+    const fetchMock = mockVoiceFetch();
+    const view = render(<GrowthWorkspace researchEnabled />);
+
+    fireEvent.click(screen.getByLabelText(/I consent to this recording/i));
+    fireEvent.click(screen.getByRole("button", { name: /start recording/i }));
+    await screen.findByRole("button", { name: /stop recording/i });
+    fetchMock.mockClear();
+
+    view.rerender(<GrowthWorkspace researchEnabled={false} />);
+
+    await waitFor(() => expect(stopTrack).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: /start recording/i })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not submit an already-transcribed voice prompt after the server gate closes", async () => {
+    setMicrophone();
+    const fetchMock = mockVoiceFetch();
+    const view = render(<GrowthWorkspace researchEnabled />);
+
+    fireEvent.click(screen.getByLabelText(/I consent to this recording/i));
+    fireEvent.click(screen.getByRole("button", { name: /start recording/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /stop recording/i }));
+    const transcript = await screen.findByLabelText(/review voice transcript/i);
+    const confirm = screen.getByRole("button", { name: /send transcript to agent/i });
+
+    fetchMock.mockClear();
+    view.rerender(<GrowthWorkspace researchEnabled={false} />);
+
+    expect(transcript).toBeDisabled();
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
 describe("GrowthWorkspace research approvals", () => {
   it("shows a bounded approval plan for typed input and only queues after approval", async () => {
     const fetchMock = mockVoiceFetch();

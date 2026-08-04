@@ -16,6 +16,10 @@ function state<T>(data: T, empty: boolean): PageState<T> {
   return empty ? { kind: "empty", data } : { kind: "ready", data };
 }
 
+export function selectActiveDashboardChannel(channels: ChannelRow[]): ChannelRow | null {
+  return channels.find((channel) => channel.is_selected && ["active", "connected"].includes(channel.connection_state)) ?? null;
+}
+
 export async function loadResearchPage(source: DashboardDataSource, workspaceId: string): Promise<PageState<ResearchListItem[]>> {
   const runs = await source.researchRuns(workspaceId);
   if (isDataError(runs)) return { kind: "error", message: runs.error };

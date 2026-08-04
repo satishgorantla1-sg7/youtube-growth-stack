@@ -34,6 +34,11 @@
 .youtube-channel-mark { width: 40px; height: 40px; }
 .youtube-channel-mark svg { width: 20px; }
 .youtube-channel-card > p { margin-top: 12px; }
+.youtube-execution { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; }
+.youtube-execution > div { display: grid; gap: 5px; }
+.youtube-execution h2, .youtube-execution p { margin: 0; }
+.youtube-execution h2 { font-family: Georgia, serif; font-size: 20px; font-weight: 500; }
+.youtube-execution p { color: var(--muted-foreground); font-size: 11px; line-height: 1.55; }
 .youtube-lifecycle-actions { margin-top: 13px; }
 .youtube-danger-zone { border-color: color-mix(in oklch, var(--destructive) 30%, var(--border)); }
 .youtube-danger-zone button { flex: 0 0 auto; }
@@ -47,3 +52,4 @@
   .youtube-channel-heading > .status-pill { grid-column: 1 / -1; justify-self: start; }
   .youtube-actions button { width: 100%; }
 }
+  .youtube-execution { grid-template-columns: 1fr; }

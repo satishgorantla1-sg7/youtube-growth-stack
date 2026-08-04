@@ -3,16 +3,19 @@ import { ApifyYouTubeProvider } from "@/lib/providers/apify";
 import { DemoResearchProvider } from "@/lib/providers/demo";
 import { FirecrawlProvider } from "@/lib/providers/firecrawl";
 import { ProviderError, type ResearchProvider, type ResearchSource, type SourceType } from "@/lib/providers/types";
+import { researchSafetyReadiness } from "./safety-readiness";
 
 export type ResearchReadiness = {
   ready: boolean;
-  missing: Array<"apify" | "firecrawl" | "worker">;
+  missing: Array<"activation" | "apify" | "firecrawl" | "worker">;
 };
 
 export function researchReadiness(requested: SourceType[] = ["youtube", "web"]): ResearchReadiness {
   if (isDemoMode()) return { ready: true, missing: [] };
   const env = serverEnv();
   const missing: ResearchReadiness["missing"] = [];
+  const safety = researchSafetyReadiness();
+  if (!safety.providersActivated) missing.push("activation");
   if (requested.includes("youtube") && !env.APIFY_API_TOKEN) missing.push("apify");
   if (requested.includes("web") && !env.FIRECRAWL_API_KEY) missing.push("firecrawl");
   if (hasSupabaseConfig() && !env.SUPABASE_SERVICE_ROLE_KEY) missing.push("worker");
@@ -28,6 +31,7 @@ export async function runResearch(query: string, requested: SourceType[], reques
   }
 
   const readiness = researchReadiness(requested);
+  if (readiness.missing.includes("activation")) throw new ProviderError("research_provider_disabled", true);
   if (!readiness.ready) throw new ProviderError("research_configuration_missing", true);
 
   const configured: ResearchProvider[] = [

@@ -43,3 +43,9 @@ Before merging, run a clean local Supabase reset, then `supabase test db`. The p
 Regenerate `src/lib/supabase/database.types.ts` only after the reset. The integration owner owns that generated file to avoid stacked-PR conflicts.
 
 Rollback is forward-only: disable YouTube connect/sync entry points first, wait for leases to expire, revoke or export encrypted envelopes according to the incident plan, then ship a new migration. Do not rewrite migration `202608010010` after it has been applied.
+
+## Execution observability
+
+The web deployment only validates and queues a bounded sync. `npm run worker:youtube` must run as a separate long-running process. Its service-only heartbeat is stored in `app_private` and customer/browser code can read only a coarse `healthy`, `stale`, or `not_seen` result without worker identifiers. The workspace UI combines that coarse signal with its own RLS-protected latest sync row to distinguish queued, running, stalled, complete, and failed execution.
+
+A healthy heartbeat proves only that a worker recently polled; it never enables the provider or replaces hosted verification. See the [YouTube sync worker runbook](operations/youtube-sync-worker.md).

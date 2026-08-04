@@ -2,6 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, ExternalLink, RefreshCw, ShieldCheck, Unplug, Youtube } from "lucide-react";
 import { useState } from "react";
+import type { YouTubeSyncExecutionState } from "@/lib/youtube/sync-execution";
 
 export type YouTubeConnectionStatus = "configuration_required" | "not_connected" | "select_channel" | "connected" | "refreshing" | "revoked" | "quota_limited" | "error";
 export type YouTubeChannelSummary = { id: string; title: string; handle: string | null; lastSyncedAt: string | null; status: Exclude<YouTubeConnectionStatus, "configuration_required" | "not_connected" | "select_channel"> };
@@ -14,6 +15,7 @@ type Props = {
   candidates?: YouTubeOwnedChannelCandidate[];
   authorization?: YouTubeAuthorization | null;
   navigate?: (url: string) => void;
+  syncExecution?: YouTubeSyncExecutionState;
   refresh?: () => void;
 };
 
@@ -30,8 +32,15 @@ const copy: Record<YouTubeConnectionStatus, [string, string]> = {
 const formatDate = (value: string | null) => value ? `Last synchronized ${new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(new Date(value))}` : "Never synchronized";
 const icon = (status: YouTubeConnectionStatus) => status === "connected" ? <CheckCircle2 aria-hidden="true" /> : status === "refreshing" ? <RefreshCw aria-hidden="true" /> : status === "not_connected" || status === "select_channel" ? <Youtube aria-hidden="true" /> : <AlertTriangle aria-hidden="true" />;
 
+const executionCopy: Record<Exclude<YouTubeSyncExecutionState, "idle">, [string, string]> = {
+  queued: ["Sync queued", "The request is durably queued for the separate YouTube worker."],
+  running: ["Sync running", "The worker is actively refreshing this workspace's read-only channel data."],
+  stalled: ["Sync needs operator attention", "The queue or lease is older than expected and no healthy worker heartbeat is available. No new provider request is being claimed."],
+  complete: ["Latest sync complete", "The latest bounded sync finished and its imported data is available."],
+  failed: ["Latest sync failed", "The latest sync stopped safely. Existing imported data is unchanged."],
+};
 export function YouTubeConnectionPanel({
-  status, workspaceId = null, channels = [], candidates = [], authorization = null,
+  status, workspaceId = null, channels = [], candidates = [], authorization = null, syncExecution = "idle",
   navigate = (url) => window.location.assign(url), refresh = () => window.location.reload(),
 }: Props) {
   const [message, setMessage] = useState<string | null>(null);
@@ -44,6 +53,7 @@ export function YouTubeConnectionPanel({
   const [revocationApprovalId, setRevocationApprovalId] = useState<string | null>(null);
   const [title, body] = copy[status];
   const reconnecting = status === "revoked";
+  const syncBlocked = syncExecution === "queued" || syncExecution === "running" || syncExecution === "stalled";
 
   async function jsonPost(url: string, body: unknown) {
     const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -137,8 +147,13 @@ export function YouTubeConnectionPanel({
         {reviewing && !authorization ? <section className="youtube-scope-review" aria-labelledby="youtube-scope-title"><h3 id="youtube-scope-title">Confirm read-only access</h3><ul><li>View the YouTube channels this Google account owns or manages.</li><li>Read channel, playlist, and video information for research and performance snapshots.</li><li>Growth Stack cannot upload, publish, edit, or delete YouTube content with this scope.</li></ul><label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>I understand the scope and approve this one connection action.</span></label><div className="youtube-actions"><button className="youtube-primary-action" type="button" onClick={approveAndContinue} disabled={!confirmed || busy}>{busy ? "Preparing Google…" : "Approve and continue"}</button><button type="button" onClick={() => { setReviewing(false); setConfirmed(false); }} disabled={busy}>Cancel</button></div></section> : null}
       </div>
     </section>
+    {syncExecution !== "idle" ? <section className={`panel youtube-execution youtube-execution-${syncExecution}`} aria-labelledby="youtube-execution-title">
+      <div><p className="youtube-eyebrow">Worker execution</p><h2 id="youtube-execution-title">{executionCopy[syncExecution][0]}</h2><p>{executionCopy[syncExecution][1]}</p></div>
+      <span className="status-pill">{syncExecution}</span>
+      <p className="youtube-worker-topology">This requires a separately deployed long-running worker; the Vercel web deployment only queues the request.</p>
+    </section> : null}
     {status === "select_channel" ? <section className="panel youtube-channel-picker" aria-labelledby="owned-channel-title"><div className="panel-heading"><div><p className="youtube-eyebrow">Google account</p><h2 id="owned-channel-title">Owned and Brand channels</h2></div><span className="status-pill">{candidates.length} available</span></div>{candidates.length ? <fieldset disabled={busy}><legend>Select one channel</legend>{candidates.map((candidate) => <label key={candidate.id}><input type="radio" name="youtube-channel" value={candidate.id} checked={selectedCandidateId === candidate.id} onChange={() => setSelectedCandidateId(candidate.id)} /><span><strong>{candidate.title}</strong><small>{candidate.handle ?? "No public handle"}</small></span></label>)}<button className="youtube-primary-action" type="button" onClick={selectCandidate} disabled={!selectedCandidateId || busy}>{busy ? "Selecting…" : "Use selected channel"}</button></fieldset> : <p className="youtube-unavailable"><AlertTriangle size={15} aria-hidden="true" />No owned channels were returned. Try a different Google account.</p>}</section> : null}
-    {channels.length ? <section className="youtube-channel-list" aria-label="Connected YouTube channels">{channels.map((channel) => <article className="panel youtube-channel-card" key={channel.id}><div className="youtube-channel-heading"><span className="youtube-channel-mark"><Youtube aria-hidden="true" /></span><div><h2>{channel.title}</h2><p>{channel.handle ?? "No public handle"}</p></div><span className={`status-pill youtube-channel-state-${channel.status}`}>{channel.status.replaceAll("_", " ")}</span></div><p>{formatDate(channel.lastSyncedAt)}</p><div className="youtube-actions youtube-lifecycle-actions" aria-label={`Actions for ${channel.title}`}><button type="button" onClick={() => syncChannel(channel.id)} disabled={busy || status !== "connected" || channel.status !== "connected"}><RefreshCw size={15} aria-hidden="true" />Sync now</button><button type="button" onClick={() => setDisconnectReview(true)} disabled={busy || channel.status === "revoked"}><Unplug size={15} aria-hidden="true" />Disconnect Google</button></div></article>)}</section> : null}
+    {channels.length ? <section className="youtube-channel-list" aria-label="Connected YouTube channels">{channels.map((channel) => <article className="panel youtube-channel-card" key={channel.id}><div className="youtube-channel-heading"><span className="youtube-channel-mark"><Youtube aria-hidden="true" /></span><div><h2>{channel.title}</h2><p>{channel.handle ?? "No public handle"}</p></div><span className={`status-pill youtube-channel-state-${channel.status}`}>{channel.status.replaceAll("_", " ")}</span></div><p>{formatDate(channel.lastSyncedAt)}</p><div className="youtube-actions youtube-lifecycle-actions" aria-label={`Actions for ${channel.title}`}><button type="button" onClick={() => syncChannel(channel.id)} disabled={busy || syncBlocked || status !== "connected" || channel.status !== "connected"}><RefreshCw size={15} aria-hidden="true" />Sync now</button><button type="button" onClick={() => setDisconnectReview(true)} disabled={busy || channel.status === "revoked"}><Unplug size={15} aria-hidden="true" />Disconnect Google</button></div></article>)}</section> : null}
     {disconnectReview ? <section className="panel youtube-scope-review" aria-labelledby="youtube-disconnect-title"><h2 id="youtube-disconnect-title">Disconnect Google access?</h2><p>This revokes the encrypted Google credential. Imported channel, video, and snapshot data is retained.</p><label><input type="checkbox" checked={disconnectConfirmed} onChange={(event) => setDisconnectConfirmed(event.target.checked)} /><span>I approve this separate revocation action and understand imported data will remain.</span></label><div className="youtube-actions"><button type="button" onClick={disconnect} disabled={!disconnectConfirmed || busy}>{busy ? "Revoking access…" : "Approve and disconnect"}</button><button type="button" onClick={() => { setDisconnectReview(false); setDisconnectConfirmed(false); }} disabled={busy}>Cancel</button></div></section> : null}
     <section className="panel youtube-danger-zone" aria-labelledby="youtube-data-title"><div><p className="youtube-eyebrow">Imported data</p><h2 id="youtube-data-title">Delete imported YouTube data</h2><p>Disconnecting Google access and deleting imported data are separate actions. Deletion requires a new explicit approval and does not delete anything from YouTube.</p></div><button type="button" disabled>Deletion approval unavailable</button></section>
   </div>;

@@ -31,23 +31,9 @@ export default async function OnboardingPage({
 
   const current = await ensureWorkspace(supabase);
   const metadata = user.user_metadata as Record<string, unknown>;
-  const fullName = typeof metadata.full_name === "string" ? metadata.full_name : "";
-  const displayName = fullName || user.email?.split("@")[0] || "Creator";
-
   if (current.workspaceId) {
     if (params.stage !== "channel") redirect("/");
-    const { data: workspace } = await supabase
-      .from("workspaces")
-      .select("name")
-      .eq("id", current.workspaceId)
-      .single();
-    return (
-      <OnboardingFlow
-        initialStep="channel"
-        initialDisplayName={displayName}
-        initialWorkspaceName={workspace?.name ?? "Creator workspace"}
-      />
-    );
+    redirect("/settings/youtube");
   }
 
   const defaults = {

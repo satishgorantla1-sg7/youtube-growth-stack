@@ -39,7 +39,7 @@ describe("GrowthWorkspace truthful dashboard", () => {
 
     expect(screen.getByText("Demo data")).toBeInTheDocument();
     expect(screen.getByText("Verified channel")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Evidence-backed idea/i })).toHaveAttribute("href", "/ideas/idea-1");
+    expect(screen.getByRole("link", { name: /Evidence-backed idea/i })).toHaveAttribute("href", "/ideas");
     expect(screen.getByText("Review research")).toBeInTheDocument();
     expect(screen.getByText("Provider setup required")).toBeInTheDocument();
   });

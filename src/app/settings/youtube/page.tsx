@@ -5,6 +5,7 @@ import { isDataError } from "@/lib/dashboard/contracts";
 import { getWorkspacePageSession } from "@/lib/dashboard/server";
 import { youtubeSyncViewOverride } from "@/lib/youtube/connection-view";
 export const metadata = { title: "YouTube connection · YouTube Growth Stack" };
+import { youtubeSyncExecutionState, type YouTubeSyncExecutionState } from "@/lib/youtube/sync-execution";
 export const dynamic = "force-dynamic";
 const outcomes: Record<string, { title: string; body: string; tone?: "error" | "info" }> = {
   connected: { title: "Google authorization completed", body: "The channel connection is being verified from workspace data.", tone: "info" },
@@ -27,15 +28,18 @@ export default async function YouTubeSettingsPage({ searchParams }: { searchPara
   const outcome = outcomes[(await searchParams).youtube ?? ""];
   let status: YouTubeConnectionStatus = session.mode === "demo" ? "configuration_required" : "not_connected";
   let channels: YouTubeChannelSummary[] = [];
+  let syncExecution: YouTubeSyncExecutionState = "idle";
   let candidates: YouTubeOwnedChannelCandidate[] = [];
   if (session.source && session.workspaceId) {
-    const [result, latestSync] = await Promise.all([
+    const [result, latestSync, workerStatus] = await Promise.all([
       session.source.channels(session.workspaceId),
       session.source.latestYoutubeSync(session.workspaceId),
+      session.source.youtubeWorkerStatus(),
     ]);
-    if (isDataError(result) || isDataError(latestSync)) status = "error";
+    if (isDataError(result) || isDataError(latestSync) || isDataError(workerStatus)) status = "error";
     else {
       const syncOverride = youtubeSyncViewOverride(latestSync.data);
+      syncExecution = youtubeSyncExecutionState(latestSync.data, workerStatus.data);
       const active = result.data.filter((channel) => channel.connection_state === "active" || channel.connection_state === "connected");
       const selected = active.filter((channel) => channel.is_selected);
       if (active.length > 1 && selected.length === 0) {
@@ -45,13 +49,13 @@ export default async function YouTubeSettingsPage({ searchParams }: { searchPara
         const visible = selected.length ? selected : active.length === 1 ? active : result.data;
         channels = visible.map((channel) => ({ id: channel.id, title: channel.title, handle: channel.handle, lastSyncedAt: channel.last_synced_at, status: mapState(channel.connection_state) }));
         status = overall(channels);
-        if (status === "connected" && syncOverride) status = syncOverride;
+        if (status === "connected" && syncExecution !== "stalled" && syncOverride) status = syncOverride;
       }
     }
   }
   return <WorkspaceShell activePath="/settings" title="YouTube connection" description="Read-only Google authorization and channel lifecycle status." displayName={session.displayName} workspaceName={session.workspaceName} signOutAction={session.signOutAction} navigationCounts={session.navigationCounts} mode={session.mode}>
     <nav className="settings-breadcrumb" aria-label="Settings breadcrumb"><a href="/settings">Settings</a><span aria-hidden="true">/</span><span aria-current="page">YouTube</span></nav>
     {outcome ? <PageStateNotice title={outcome.title} tone={outcome.tone ?? "neutral"}><p>{outcome.body}</p></PageStateNotice> : null}
-    <YouTubeConnectionPanel status={status} workspaceId={session.workspaceId} channels={channels} candidates={candidates} />
+    <YouTubeConnectionPanel status={status} workspaceId={session.workspaceId} channels={channels} candidates={candidates} syncExecution={syncExecution} />
   </WorkspaceShell>;
 }

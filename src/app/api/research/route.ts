@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
+import { isDemoMode } from "@/lib/env";
 import { researchRequestSchema } from "@/lib/schemas";
 import { researchJobRepository } from "@/lib/research/repository";
+import { paidResearchProvidersEnabled } from "@/lib/research/safety-readiness";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const parsed = researchRequestSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid research request", issues: parsed.error.issues }, { status: 400 });
+  if (!isDemoMode() && !paidResearchProvidersEnabled()) {
+    return NextResponse.json({ error: "research_provider_disabled", message: "Paid research is disabled by an administrator. No provider call or approval was created." }, { status: 503 });
+  }
   try {
     const run = await researchJobRepository().createOrGet(parsed.data);
     return NextResponse.json({

@@ -1,7 +1,9 @@
 import { runProductionYouTubeSyncOnce } from "../src/lib/providers/youtube-sync-worker";
 import { safeYouTubeWorkerErrorCode } from "../src/lib/providers/youtube-worker-log";
+import { randomUUID } from "node:crypto";
 
-const workerId = process.env.YOUTUBE_WORKER_ID ?? `youtube-${process.pid}`;
+// A random instance UUID avoids putting hostnames, usernames, or deployment labels in leases/heartbeats.
+const workerId = randomUUID();
 const pollMs = 5_000;
 let stopping = false;
 

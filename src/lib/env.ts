@@ -6,6 +6,7 @@ const privateSchema = z.object({
   OPENAI_TRANSCRIPTION_MODEL: z.string().default("gpt-4o-transcribe"),
   OPENAI_SPEECH_MODEL: z.string().default("tts-1"),
   OPENAI_VOICE: z.string().default("marin"),
+  PAID_RESEARCH_PROVIDERS_ENABLED: z.enum(["true", "false"]).default("false"),
   FIRECRAWL_API_KEY: z.string().min(1).optional(),
   APIFY_API_TOKEN: z.string().min(1).optional(),
   APIFY_YOUTUBE_ACTOR_ID: z.string().default("streamers/youtube-scraper"),

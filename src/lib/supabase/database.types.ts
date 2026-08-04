@@ -1945,6 +1945,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      get_youtube_worker_status: { Args: never; Returns: Json }
       lease_research_job: {
         Args: { lease_seconds?: number; worker_id: string }
         Returns: Json
@@ -2003,6 +2004,14 @@ export type Database = {
           video_rows?: Json
         }
         Returns: Json
+      }
+      record_worker_heartbeat: {
+        Args: {
+          target_status: string
+          target_worker_instance_id: string
+          target_worker_kind: string
+        }
+        Returns: undefined
       }
       record_youtube_quota: {
         Args: {

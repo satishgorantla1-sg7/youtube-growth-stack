@@ -6,13 +6,14 @@ export type ResearchProviderConfiguration = {
 export type ResearchSafetyReadiness = {
   mode: "demo" | "connected";
   configurationComplete: boolean;
-  activation: "disabled_in_demo" | "configuration_required" | "hosted_verification_required";
+  providersActivated: boolean;
+  activation: "disabled_in_demo" | "configuration_required" | "disabled_by_operator" | "hosted_verification_required";
   controls: {
     enforceable: boolean;
     verification: "not_applicable" | "configuration_required" | "hosted_required";
   };
   providers: ResearchProviderConfiguration;
-  missing: Array<"worker" | "apify" | "firecrawl">;
+  missing: Array<"activation" | "worker" | "apify" | "firecrawl">;
 };
 
 type ReadinessEnvironment = Partial<Pick<
@@ -21,9 +22,14 @@ type ReadinessEnvironment = Partial<Pick<
   | "NEXT_PUBLIC_SUPABASE_URL"
   | "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
   | "SUPABASE_SERVICE_ROLE_KEY"
+  | "PAID_RESEARCH_PROVIDERS_ENABLED"
   | "APIFY_API_TOKEN"
   | "FIRECRAWL_API_KEY"
 >>;
+
+export function paidResearchProvidersEnabled(env: Pick<ReadinessEnvironment, "PAID_RESEARCH_PROVIDERS_ENABLED"> = process.env as ReadinessEnvironment): boolean {
+  return env.PAID_RESEARCH_PROVIDERS_ENABLED === "true";
+}
 
 /**
  * Reports configuration capability without reading, returning, or validating any
@@ -46,6 +52,7 @@ export function researchSafetyReadiness(
   if (!workerConfigured) missing.push("worker");
   if (!apifyConfigured) missing.push("apify");
   if (!firecrawlConfigured) missing.push("firecrawl");
+  const providersActivated = mode === "connected" && paidResearchProvidersEnabled(env);
 
   const configurationComplete = mode === "connected" && missing.length === 0;
   const controlsEnforceable = mode === "connected" && workerConfigured;
@@ -53,11 +60,14 @@ export function researchSafetyReadiness(
   return {
     mode,
     configurationComplete,
+    providersActivated,
     activation: mode === "demo"
       ? "disabled_in_demo"
-      : configurationComplete
-        ? "hosted_verification_required"
-        : "configuration_required",
+      : !configurationComplete
+        ? "configuration_required"
+        : providersActivated
+          ? "hosted_verification_required"
+          : "disabled_by_operator",
     controls: {
       enforceable: controlsEnforceable,
       verification: mode === "demo"
@@ -70,6 +80,6 @@ export function researchSafetyReadiness(
       apify: apifyConfigured ? "configured" : "configuration_required",
       firecrawl: firecrawlConfigured ? "configured" : "configuration_required",
     },
-    missing,
+    missing: [...(!providersActivated && mode === "connected" ? ["activation" as const] : []), ...missing],
   };
 }
