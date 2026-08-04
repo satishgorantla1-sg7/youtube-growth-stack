@@ -1,22 +1,25 @@
+import { PageStateNotice } from "@/app/_components/workspace-page";
 import { WorkspaceShell } from "@/components/workspace";
-import { PageStateNotice, RecordCard, RecordList, formatDate } from "@/app/_components/workspace-page";
-import { loadResearchPage } from "@/lib/dashboard/loaders";
+import { ResearchHistory } from "@/components/research/research-explorer";
 import { getWorkspacePageSession } from "@/lib/dashboard/server";
+import { parseResearchFilters, SupabaseResearchExplorerSource } from "@/lib/research/explorer";
+import { createClient } from "@/lib/supabase/server";
+import "./research.css";
 
 export const metadata = { title: "Research · YouTube Growth Stack" };
 export const dynamic = "force-dynamic";
 
-export default async function ResearchPage() {
+export default async function ResearchPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await getWorkspacePageSession("/research");
-  const state = session.source && session.workspaceId
-    ? await loadResearchPage(session.source, session.workspaceId)
-    : { kind: "empty", data: [] } as const;
-  return (
-    <WorkspaceShell activePath="/research" title="Research" description="Your workspace research runs and saved evidence." displayName={session.displayName} workspaceName={session.workspaceName} signOutAction={session.signOutAction} navigationCounts={session.navigationCounts} mode={session.mode}>
-      {session.mode === "demo" ? <PageStateNotice title="Demo mode"><p>Connect Supabase to view tenant research history. Demo mode does not invent research records.</p></PageStateNotice> : null}
-      {state.kind === "error" ? <PageStateNotice title="Research is unavailable" tone="error"><p>We could not load this workspace’s research. Try again shortly.</p></PageStateNotice> : null}
-      {state.kind === "empty" && session.mode === "connected" ? <PageStateNotice title="No research yet"><p>Ask the growth agent to plan research. Paid research will still require your explicit approval.</p></PageStateNotice> : null}
-      {state.kind === "ready" ? <RecordList>{state.data.map((run) => <RecordCard key={run.id} title={run.prompt} meta={run.state}><p>{run.mode} research · {run.sourceCount} evidence source{run.sourceCount === 1 ? "" : "s"}</p><p>Created {formatDate(run.created_at)} · Credits {run.actual_credits ?? run.estimated_credits}</p>{run.error_code ? <p>Failure code: {run.error_code}</p> : null}</RecordCard>)}</RecordList> : null}
-    </WorkspaceShell>
-  );
+  const filters = parseResearchFilters(await searchParams);
+  let result = null; let loadFailed = false;
+  if (session.mode === "connected" && session.workspaceId) {
+    try { result = await new SupabaseResearchExplorerSource(await createClient()).history(session.workspaceId, filters); }
+    catch { loadFailed = true; }
+  }
+  return <WorkspaceShell activePath="/research" title="Research" description="Workspace research history and saved source evidence." displayName={session.displayName} workspaceName={session.workspaceName} signOutAction={session.signOutAction} navigationCounts={session.navigationCounts} mode={session.mode}>
+    {session.mode === "demo" ? <PageStateNotice title="Research configuration required" tone="info"><p>Connect Supabase to view tenant research history. Demo mode never invents research records.</p></PageStateNotice> : null}
+    {loadFailed ? <PageStateNotice title="Research is unavailable" tone="error"><p>We could not load this workspace’s research. No records from another workspace are shown. Try again shortly.</p></PageStateNotice> : null}
+    {result ? <ResearchHistory result={result} filters={filters} /> : null}
+  </WorkspaceShell>;
 }
