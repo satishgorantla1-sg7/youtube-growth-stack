@@ -345,12 +345,139 @@ export type Database = {
           },
         ]
       }
-      ideas: {
+      idea_evidence: {
         Row: {
           created_at: string
+          generation_run_id: string
+          idea_id: string
+          research_run_id: string
+          research_source_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          generation_run_id: string
+          idea_id: string
+          research_run_id: string
+          research_source_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          generation_run_id?: string
+          idea_id?: string
+          research_run_id?: string
+          research_source_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "idea_evidence_idea_fk"
+            columns: [
+              "workspace_id",
+              "research_run_id",
+              "generation_run_id",
+              "idea_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: [
+              "workspace_id",
+              "research_run_id",
+              "generation_run_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "idea_evidence_source_fk"
+            columns: ["workspace_id", "research_run_id", "research_source_id"]
+            isOneToOne: false
+            referencedRelation: "research_sources"
+            referencedColumns: ["workspace_id", "research_run_id", "id"]
+          },
+        ]
+      }
+      idea_generation_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_code: string | null
           id: string
+          idempotency_key: string
+          max_ideas: number
+          model_version: string
+          prompt_version: string
+          requested_by: string
+          research_run_id: string
+          state: string
+          workspace_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          idempotency_key: string
+          max_ideas: number
+          model_version: string
+          prompt_version: string
+          requested_by: string
+          research_run_id: string
+          state?: string
+          workspace_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          idempotency_key?: string
+          max_ideas?: number
+          model_version?: string
+          prompt_version?: string
+          requested_by?: string
+          research_run_id?: string
+          state?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "idea_generation_runs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "idea_generation_runs_research_fk"
+            columns: ["workspace_id", "research_run_id"]
+            isOneToOne: false
+            referencedRelation: "research_runs"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "idea_generation_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ideas: {
+        Row: {
+          competition_score: number | null
+          confidence_score: number | null
+          created_at: string
+          demand_score: number | null
+          generation_run_id: string | null
+          id: string
+          model_version: string | null
           premise: string
           project_id: string | null
+          prompt_version: string | null
+          provenance: Json
+          relevance_score: number | null
           research_run_id: string | null
           score: number | null
           scoring_reason: Json
@@ -360,10 +487,18 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          competition_score?: number | null
+          confidence_score?: number | null
           created_at?: string
+          demand_score?: number | null
+          generation_run_id?: string | null
           id?: string
+          model_version?: string | null
           premise: string
           project_id?: string | null
+          prompt_version?: string | null
+          provenance?: Json
+          relevance_score?: number | null
           research_run_id?: string | null
           score?: number | null
           scoring_reason?: Json
@@ -373,10 +508,18 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          competition_score?: number | null
+          confidence_score?: number | null
           created_at?: string
+          demand_score?: number | null
+          generation_run_id?: string | null
           id?: string
+          model_version?: string | null
           premise?: string
           project_id?: string | null
+          prompt_version?: string | null
+          provenance?: Json
+          relevance_score?: number | null
           research_run_id?: string | null
           score?: number | null
           scoring_reason?: Json
@@ -406,6 +549,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ideas_workspace_research_generation_fk"
+            columns: ["workspace_id", "research_run_id", "generation_run_id"]
+            isOneToOne: false
+            referencedRelation: "idea_generation_runs"
+            referencedColumns: ["workspace_id", "research_run_id", "id"]
           },
         ]
       }
@@ -847,6 +997,7 @@ export type Database = {
           prompt: string
           requested_by: string
           requested_sources: string[]
+          retry_of_run_id: string | null
           started_at: string | null
           state: string
           updated_at: string
@@ -870,6 +1021,7 @@ export type Database = {
           prompt: string
           requested_by: string
           requested_sources?: string[]
+          retry_of_run_id?: string | null
           started_at?: string | null
           state?: string
           updated_at?: string
@@ -893,6 +1045,7 @@ export type Database = {
           prompt?: string
           requested_by?: string
           requested_sources?: string[]
+          retry_of_run_id?: string | null
           started_at?: string | null
           state?: string
           updated_at?: string
@@ -933,6 +1086,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_runs_workspace_project_fk"
+            columns: ["workspace_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "research_runs_workspace_retry_fk"
+            columns: ["workspace_id", "retry_of_run_id"]
+            isOneToOne: false
+            referencedRelation: "research_runs"
+            referencedColumns: ["workspace_id", "id"]
           },
         ]
       }
@@ -1507,6 +1674,18 @@ export type Database = {
         Args: { target_workspace_id: string }
         Returns: undefined
       }
+      begin_idea_generation: {
+        Args: {
+          request_idempotency_key: string
+          request_max_ideas: number
+          request_model_version: string
+          request_prompt_version: string
+          target_requested_by: string
+          target_research_run_id: string
+          target_workspace_id: string
+        }
+        Returns: Json
+      }
       begin_provider_invocation: {
         Args: {
           request_idempotency_key: string
@@ -1623,6 +1802,10 @@ export type Database = {
         }
         Returns: Json
       }
+      fail_idea_generation: {
+        Args: { failure_code: string; target_generation_run_id: string }
+        Returns: undefined
+      }
       fail_research_job: {
         Args: {
           failure_code: string
@@ -1706,6 +1889,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      persist_generated_ideas: {
+        Args: { generated_ideas: Json; target_generation_run_id: string }
+        Returns: Json
+      }
       persist_youtube_sync_page: {
         Args: {
           channel_rows?: Json
@@ -1759,6 +1946,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      retry_research_run: {
+        Args: { request_idempotency_key: string; target_run_id: string }
+        Returns: Json
+      }
       select_youtube_channel: {
         Args: { target_channel_id: string; target_workspace_id: string }
         Returns: Json
@@ -1783,6 +1974,14 @@ export type Database = {
           target_workspace_id: string
         }
         Returns: undefined
+      }
+      transition_idea_state: {
+        Args: {
+          target_idea_id: string
+          target_state: string
+          transition_note?: string
+        }
+        Returns: Json
       }
     }
     Enums: {
